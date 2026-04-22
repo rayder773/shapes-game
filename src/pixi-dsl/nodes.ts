@@ -16,6 +16,11 @@ export type PointLike = {
   y: number;
 };
 
+export type SizeLike = {
+  height: number;
+  width: number;
+};
+
 type ApplyContext = {
   track(unsubscribe: Unsubscribe): void;
 };
@@ -143,6 +148,43 @@ export class PixiNode {
 export class ContainerNode extends PixiNode {
   constructor(children: PixiChild[] = []) {
     super("container", children);
+  }
+
+  background(
+    color: ValueSource<number>,
+    size: ValueSource<SizeLike>,
+  ): this {
+    this.appliers.push((displayObject, context) => {
+      const containerObject = displayObject as Container;
+      const backgroundGraphics = new Graphics();
+      let currentColor = 0x000000;
+      let currentSize: SizeLike = {
+        height: 0,
+        width: 0,
+      };
+
+      const redraw = () => {
+        backgroundGraphics
+          .clear()
+          .rect(0, 0, currentSize.width, currentSize.height)
+          .fill(currentColor);
+      };
+
+      containerObject.addChildAt(backgroundGraphics, 0);
+      context.track(() => {
+        backgroundGraphics.destroy();
+      });
+      bindValue(color, (nextColor) => {
+        currentColor = nextColor;
+        redraw();
+      }, context.track);
+      bindValue(size, (nextSize) => {
+        currentSize = nextSize;
+        redraw();
+      }, context.track);
+    });
+
+    return this;
   }
 }
 

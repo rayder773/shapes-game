@@ -6,6 +6,7 @@ export {
   text,
   type PixiChild,
   type PointLike,
+  type SizeLike,
 } from "./nodes";
 export {
   computed,

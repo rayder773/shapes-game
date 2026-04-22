@@ -1,7 +1,6 @@
 import {
   computed,
   container,
-  graphic,
   text,
   type PixiChild,
 } from "../pixi-dsl";
@@ -77,12 +76,6 @@ export class DemoScene {
 
   view(): PixiChild {
     return container(
-      graphic()
-        .draw((graphics) => {
-          graphics
-            .rect(0, 0, worldWidth, worldHeight)
-            .fill(0x10151f);
-        }),
       this.physicsScene.view(),
       text(computed(() => `height ${this.ball.height.value.toFixed(2)}m`))
         .position(24, 22)
@@ -92,6 +85,10 @@ export class DemoScene {
           fontSize: 20,
           fontWeight: "700",
         }),
-    );
+    )
+      .background(0x10151f, {
+        height: worldHeight,
+        width: worldWidth,
+      });
   }
 }
