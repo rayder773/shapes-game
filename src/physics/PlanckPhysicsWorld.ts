@@ -1,10 +1,11 @@
-import { Box, Circle, type Body, World } from "planck";
+import { Box, Circle, Polygon, type Body, World } from "planck";
 import {
   type BoxBodyOptions,
   type CircleBodyOptions,
   type PhysicsBody,
   type PhysicsPoint,
   type PhysicsWorld,
+  type PolygonBodyOptions,
 } from "./types";
 
 type PlanckPhysicsWorldOptions = {
@@ -23,10 +24,12 @@ export class PlanckPhysicsWorld implements PhysicsWorld {
   createCircleBody(options: CircleBodyOptions): PhysicsBody {
     const body = this.world.createBody({
       angularDamping: options.angularDamping,
+      angle: options.angle,
       linearVelocity: options.linearVelocity,
       position: options.position,
       type: options.type,
     });
+    this.applyAngularVelocity(body, options.angularVelocity);
 
     body.createFixture({
       density: options.density,
@@ -40,13 +43,39 @@ export class PlanckPhysicsWorld implements PhysicsWorld {
 
   createBoxBody(options: BoxBodyOptions): PhysicsBody {
     const body = this.world.createBody({
+      angularDamping: options.angularDamping,
+      angle: options.angle,
+      linearVelocity: options.linearVelocity,
       position: options.position,
       type: options.type,
     });
+    this.applyAngularVelocity(body, options.angularVelocity);
 
     body.createFixture({
+      density: options.density,
       friction: options.friction,
+      restitution: options.restitution,
       shape: new Box(options.size.width / 2, options.size.height / 2),
+    });
+
+    return new PlanckPhysicsBody(body);
+  }
+
+  createPolygonBody(options: PolygonBodyOptions): PhysicsBody {
+    const body = this.world.createBody({
+      angularDamping: options.angularDamping,
+      angle: options.angle,
+      linearVelocity: options.linearVelocity,
+      position: options.position,
+      type: options.type,
+    });
+    this.applyAngularVelocity(body, options.angularVelocity);
+
+    body.createFixture({
+      density: options.density,
+      friction: options.friction,
+      restitution: options.restitution,
+      shape: new Polygon(options.vertices),
     });
 
     return new PlanckPhysicsBody(body);
@@ -54,6 +83,12 @@ export class PlanckPhysicsWorld implements PhysicsWorld {
 
   step(deltaSeconds: number): void {
     this.world.step(deltaSeconds);
+  }
+
+  private applyAngularVelocity(body: Body, angularVelocity?: number): void {
+    if (angularVelocity !== undefined) {
+      body.setAngularVelocity(angularVelocity);
+    }
   }
 }
 

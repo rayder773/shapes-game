@@ -1,7 +1,7 @@
 import "./style.css";
 import { pixi } from "./pixi-dsl";
 import { GameLoop } from "./game/GameLoop";
-import { DemoScene } from "./examples/DemoScene";
+import { GameScene } from "./game/GameScene";
 
 const parent = document.querySelector<HTMLDivElement>("#app");
 
@@ -9,7 +9,7 @@ if (parent === null) {
   throw new Error("Missing #app root element.");
 }
 
-const scene = new DemoScene();
+const scene = new GameScene();
 await pixi(scene.view())
   .init({
     antialias: true,

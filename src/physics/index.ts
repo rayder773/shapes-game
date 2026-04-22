@@ -8,4 +8,5 @@ export {
   type PhysicsPoint,
   type PhysicsSize,
   type PhysicsWorld,
+  type PolygonBodyOptions,
 } from "./types";

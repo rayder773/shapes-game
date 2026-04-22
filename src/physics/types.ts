@@ -20,6 +20,8 @@ export type PhysicsBody = {
 
 export type CircleBodyOptions = {
   angularDamping?: number;
+  angularVelocity?: number;
+  angle?: number;
   density?: number;
   friction?: number;
   linearVelocity?: PhysicsPoint;
@@ -30,14 +32,34 @@ export type CircleBodyOptions = {
 };
 
 export type BoxBodyOptions = {
+  angularDamping?: number;
+  angularVelocity?: number;
+  angle?: number;
+  density?: number;
   friction?: number;
+  linearVelocity?: PhysicsPoint;
   position: PhysicsPoint;
+  restitution?: number;
   size: PhysicsSize;
   type: PhysicsBodyKind;
+};
+
+export type PolygonBodyOptions = {
+  angularDamping?: number;
+  angularVelocity?: number;
+  angle?: number;
+  density?: number;
+  friction?: number;
+  linearVelocity?: PhysicsPoint;
+  position: PhysicsPoint;
+  restitution?: number;
+  type: PhysicsBodyKind;
+  vertices: PhysicsPoint[];
 };
 
 export type PhysicsWorld = {
   createBoxBody(options: BoxBodyOptions): PhysicsBody;
   createCircleBody(options: CircleBodyOptions): PhysicsBody;
+  createPolygonBody(options: PolygonBodyOptions): PhysicsBody;
   step(deltaSeconds: number): void;
 };
