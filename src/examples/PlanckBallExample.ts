@@ -1,8 +1,8 @@
 import { Box, Circle, type Body, World } from "planck";
 import { Texture } from "pixi.js";
 import {
+  computed,
   container,
-  effect,
   graphic,
   signal,
   sprite,
@@ -14,13 +14,23 @@ import {
 const pixelsPerMeter = 48;
 const worldWidth = 960;
 const worldHeight = 540;
-const groundY = 440;
+const worldOrigin = {
+  x: worldWidth / 2,
+  y: 440,
+};
+const groundPosition = {
+  x: 0,
+  y: 0,
+};
+const groundSize = {
+  height: 0.4,
+  width: 20,
+};
 
 export class PlanckBallExample {
   readonly ballPosition: Signal<{ x: number; y: number }>;
   readonly ballRotation: Signal<number>;
   readonly ballHeight: Signal<number>;
-  readonly hudText: Signal<string>;
   private readonly ballBody: Body;
   private readonly world: World;
   private elapsedSeconds = 0;
@@ -36,13 +46,8 @@ export class PlanckBallExample {
     this.ballPosition = signal(this.toScreenPoint(this.ballBody.getPosition()));
     this.ballRotation = signal(this.ballBody.getAngle());
     this.ballHeight = signal(0);
-    this.hudText = signal("");
 
     this.createGround();
-
-    effect(() => {      
-      this.hudText.set(`height ${this.ballHeight.value.toFixed(2)}m`);
-    });
   }
 
   view(): PixiChild {
@@ -55,11 +60,18 @@ export class PlanckBallExample {
         }),
       graphic()
         .draw((graphics) => {
+          const groundRect = this.toScreenRect(groundPosition, groundSize);
+
           graphics
-            .rect(0, groundY, worldWidth, 18)
+            .rect(groundRect.x, groundRect.y, groundRect.width, groundRect.height)
             .fill(0x3d7a5f);
           graphics
-            .rect(0, groundY + 18, worldWidth, worldHeight - groundY)
+            .rect(
+              0,
+              groundRect.y + groundRect.height,
+              worldWidth,
+              worldHeight - groundRect.y - groundRect.height,
+            )
             .fill(0x1d2b29);
         }),
       container(
@@ -79,7 +91,7 @@ export class PlanckBallExample {
       )
         .position(this.ballPosition)
         .rotation(this.ballRotation),
-      text(this.hudText)
+      text(computed(() => `height ${this.ballHeight.value.toFixed(2)}m`))
         .position(24, 22)
         .style({
           fill: 0xffffff,
@@ -134,16 +146,13 @@ export class PlanckBallExample {
 
   private createGround(): void {
     const ground = this.world.createBody({
-      position: {
-        x: 0,
-        y: 0,
-      },
+      position: groundPosition,
       type: "static",
     });
 
     ground.createFixture({
       friction: 0.7,
-      shape: new Box(10, 0.2),
+      shape: new Box(groundSize.width / 2, groundSize.height / 2),
     });
   }
 
@@ -163,8 +172,24 @@ export class PlanckBallExample {
 
   private toScreenPoint(point: { x: number; y: number }): { x: number; y: number } {
     return {
-      x: worldWidth / 2 + point.x * pixelsPerMeter,
-      y: groundY - point.y * pixelsPerMeter,
+      x: worldOrigin.x + point.x * pixelsPerMeter,
+      y: worldOrigin.y - point.y * pixelsPerMeter,
+    };
+  }
+
+  private toScreenRect(
+    center: { x: number; y: number },
+    size: { height: number; width: number },
+  ): { height: number; width: number; x: number; y: number } {
+    const screenCenter = this.toScreenPoint(center);
+    const width = size.width * pixelsPerMeter;
+    const height = size.height * pixelsPerMeter;
+
+    return {
+      height,
+      width,
+      x: screenCenter.x - width / 2,
+      y: screenCenter.y - height / 2,
     };
   }
 }

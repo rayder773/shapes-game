@@ -8,6 +8,7 @@ export {
   type PointLike,
 } from "./nodes";
 export {
+  computed,
   effect,
   signal,
   type Signal,

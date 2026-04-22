@@ -1,5 +1,6 @@
 import "./style.css";
 import { pixi } from "./pixi-dsl";
+import { GameLoop } from "./game/GameLoop";
 import { PlanckBallExample } from "./examples/PlanckBallExample";
 
 const parent = document.querySelector<HTMLDivElement>("#app");
@@ -9,7 +10,7 @@ if (parent === null) {
 }
 
 const example = new PlanckBallExample();
-const mounted = await pixi(example.view())
+await pixi(example.view())
   .init({
     antialias: true,
     backgroundColor: 0x10151f,
@@ -18,6 +19,8 @@ const mounted = await pixi(example.view())
     width: 960,
   });
 
-mounted.app.ticker.add((ticker) => {
-  example.step(ticker.deltaMS / 1000);
+const loop = new GameLoop((deltaSeconds) => {
+  example.step(deltaSeconds);
 });
+
+loop.start();

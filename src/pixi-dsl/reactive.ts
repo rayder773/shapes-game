@@ -103,6 +103,16 @@ export function bindValue<T>(
   }
 }
 
+export function computed<T>(calculate: () => T): Signal<T> {
+  const result = signal(calculate());
+
+  effect(() => {
+    result.set(calculate());
+  });
+
+  return result;
+}
+
 export function effect(callback: () => void | Unsubscribe): Unsubscribe {
   let disposed = false;
   let cleanup: Unsubscribe | undefined;
