@@ -2,11 +2,13 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Zero-G Shapes ECS</title>
     <style>
       :root {
         color-scheme: dark;
+        --app-width: 100vw;
+        --app-height: 100vh;
         --bg-base: #09111d;
         --bg-glow-a: rgba(72, 145, 255, 0.2);
         --bg-glow-b: rgba(77, 208, 154, 0.15);
@@ -35,6 +37,8 @@
 
       body {
         position: relative;
+        width: var(--app-width);
+        height: var(--app-height);
         color: var(--text);
         font-family: "Trebuchet MS", "Segoe UI", sans-serif;
         overscroll-behavior: none;
@@ -49,8 +53,8 @@
 
       canvas {
         display: block;
-        width: 100vw;
-        height: 100vh;
+        width: 100%;
+        height: 100%;
         touch-action: none;
       }
 
@@ -149,7 +153,8 @@
       }
 
       .modal {
-        width: min(92vw, 380px);
+        width: min(100%, 380px);
+        margin-inline: auto;
         padding: 28px 24px;
         border: 1px solid var(--panel-border);
         border-radius: 22px;

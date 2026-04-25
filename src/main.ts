@@ -298,6 +298,7 @@ if (!(joystickKnobElement instanceof HTMLDivElement)) {
   throw new Error("Joystick knob element not found");
 }
 const joystickKnob = joystickKnobElement;
+const rootStyle = document.documentElement.style;
 
 function detectTouchDevice(): boolean {
   return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
@@ -507,6 +508,27 @@ function createQueues(): QueueState {
     spawns: [],
     collisionEvents: [],
   };
+}
+
+function getViewportSize(): { width: number; height: number } {
+  const viewport = window.visualViewport;
+
+  if (viewport) {
+    return {
+      width: Math.round(viewport.width),
+      height: Math.round(viewport.height),
+    };
+  }
+
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+}
+
+function syncViewportCssVars(widthCss: number, heightCss: number): void {
+  rootStyle.setProperty("--app-width", `${widthCss}px`);
+  rootStyle.setProperty("--app-height", `${heightCss}px`);
 }
 
   function randomItem<T>(items: readonly T[]): T {
@@ -1299,7 +1321,7 @@ function togglePauseGame(): void {
   function drawRoomBorder(): void {
     const metrics = getCanvasMetrics();
     ctx.save();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.strokeStyle = "red";
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, metrics.widthCss - 2, metrics.heightCss - 2);
     ctx.restore();
@@ -1361,17 +1383,22 @@ function togglePauseGame(): void {
 
   function resizeCanvas(): void {
     const dpr = window.devicePixelRatio || 1;
-    const widthCss = window.innerWidth;
-    const heightCss = window.innerHeight;
+    const viewport = getViewportSize();
+    const widthCss = viewport.width;
+    const heightCss = viewport.height;
     const widthPx = Math.floor(widthCss * dpr);
     const heightPx = Math.floor(heightCss * dpr);
 
+    syncViewportCssVars(widthCss, heightCss);
     game.canvasMetrics.dpr = dpr;
     game.canvasMetrics.widthCss = widthCss;
     game.canvasMetrics.heightCss = heightCss;
     game.canvasMetrics.widthPx = widthPx;
     game.canvasMetrics.heightPx = heightPx;
     updateGameplayProfile();
+
+    canvas.style.width = `${widthCss}px`;
+    canvas.style.height = `${heightCss}px`;
 
     if (canvas.width !== widthPx || canvas.height !== heightPx) {
       canvas.width = widthPx;
@@ -1508,6 +1535,15 @@ function togglePauseGame(): void {
   });
 
   window.addEventListener("resize", () => {
+    resizeCanvas();
+  });
+  window.addEventListener("orientationchange", () => {
+    resizeCanvas();
+  });
+  window.visualViewport?.addEventListener("resize", () => {
+    resizeCanvas();
+  });
+  window.visualViewport?.addEventListener("scroll", () => {
     resizeCanvas();
   });
 
