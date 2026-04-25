@@ -18,6 +18,8 @@ type ColorName = "red" | "blue" | "green";
 type FillStyleName = "filled" | "outline" | "dashed";
 type InputKey = "up" | "down" | "left" | "right";
 type PhysicsBodyKind = "entity" | "wall";
+type GameState = "boot" | "playing" | "paused" | "gameOver";
+type OverlayMode = "pause" | "gameOver" | null;
 
 type EntityId = number;
 type PhysicsBodyId = number;
@@ -154,7 +156,7 @@ type PhysicsAdapter = {
 };
 
 type Runtime = {
-  state: "boot" | "playing" | "gameOver";
+  state: GameState;
   score: number;
   nextEntityId: number;
   accumulator: number;
@@ -190,7 +192,8 @@ const COLOR_MAP: Record<ColorName, string> = {
   blue: "#66a8ff",
   green: "#59e093",
 };
-const INPUT_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
+const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
+const PAUSE_KEY = "escape";
 const canvasElement = document.getElementById("game");
 if (!(canvasElement instanceof HTMLCanvasElement)) {
   throw new Error("Canvas element not found");
@@ -202,25 +205,66 @@ if (!context2d) {
 }
 const ctx = context2d;
 
-const overlayElement = document.getElementById("game-over-overlay");
+const hudScoreElement = document.getElementById("hud-score");
+if (!(hudScoreElement instanceof HTMLParagraphElement)) {
+  throw new Error("HUD score element not found");
+}
+const hudScore = hudScoreElement;
+
+const hudPlayerElement = document.getElementById("hud-player");
+if (!(hudPlayerElement instanceof HTMLParagraphElement)) {
+  throw new Error("HUD player element not found");
+}
+const hudPlayer = hudPlayerElement;
+
+const pauseButtonElement = document.getElementById("pause-button");
+if (!(pauseButtonElement instanceof HTMLButtonElement)) {
+  throw new Error("Pause button element not found");
+}
+const pauseButton = pauseButtonElement;
+
+const overlayElement = document.getElementById("overlay");
 if (!(overlayElement instanceof HTMLDivElement)) {
   throw new Error("Overlay element not found");
 }
 const overlay = overlayElement;
 
-const gameOverScoreElement = document.getElementById("game-over-score");
-if (!(gameOverScoreElement instanceof HTMLParagraphElement)) {
-  throw new Error("Score element not found");
+const overlayTitleElement = document.getElementById("overlay-title");
+if (!(overlayTitleElement instanceof HTMLHeadingElement)) {
+  throw new Error("Overlay title element not found");
 }
-const gameOverScore = gameOverScoreElement;
+const overlayTitle = overlayTitleElement;
 
-const restartButtonElement = document.getElementById("restart-button");
-if (!(restartButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Restart button element not found");
+const overlayMessageElement = document.getElementById("overlay-message");
+if (!(overlayMessageElement instanceof HTMLParagraphElement)) {
+  throw new Error("Overlay message element not found");
 }
-const restartButton = restartButtonElement;
+const overlayMessage = overlayMessageElement;
+
+const overlayPrimaryButtonElement = document.getElementById("overlay-primary-button");
+if (!(overlayPrimaryButtonElement instanceof HTMLButtonElement)) {
+  throw new Error("Overlay primary button element not found");
+}
+const overlayPrimaryButton = overlayPrimaryButtonElement;
+
+const overlaySecondaryButtonElement = document.getElementById("overlay-secondary-button");
+if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
+  throw new Error("Overlay secondary button element not found");
+}
+const overlaySecondaryButton = overlaySecondaryButtonElement;
+
+const touchButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-input-key]")];
+const touchButtonsByKey = new Map<InputKey, HTMLButtonElement>();
+for (const button of touchButtons) {
+  const inputKey = button.dataset.inputKey;
+  if (inputKey === "up" || inputKey === "down" || inputKey === "left" || inputKey === "right") {
+    touchButtonsByKey.set(inputKey, button);
+  }
+}
 
 const game = createRuntime();
+let overlayMode: OverlayMode = null;
+const activeTouchInputs = new Map<number, InputKey>();
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
@@ -256,6 +300,39 @@ function createInputSnapshot(): InputSnapshot {
     left: false,
     right: false,
   };
+}
+
+function updateHud(): void {
+  const player = getPlayerEntity();
+  hudScore.textContent = `Score: ${game.score}`;
+  hudPlayer.textContent = player
+    ? `Player: ${player.appearance.shape} / ${player.appearance.color} / ${player.appearance.fillStyle}`
+    : "Player: -";
+  pauseButton.textContent = game.state === "paused" ? "▶" : "II";
+  pauseButton.setAttribute("aria-label", game.state === "paused" ? "Resume game" : "Pause game");
+}
+
+function setDirectionalInput(inputKey: InputKey, isPressed: boolean): void {
+  game.input[inputKey] = isPressed;
+}
+
+function isTouchInputHeld(inputKey: InputKey): boolean {
+  for (const activeInputKey of activeTouchInputs.values()) {
+    if (activeInputKey === inputKey) return true;
+  }
+
+  return false;
+}
+
+function syncTouchButtonState(): void {
+  for (const [inputKey, button] of touchButtonsByKey) {
+    button.classList.toggle("is-active", isTouchInputHeld(inputKey));
+  }
+}
+
+function clearActiveTouchInputs(): void {
+  activeTouchInputs.clear();
+  syncTouchButtonState();
 }
 
 function createCanvasMetrics(): CanvasMetrics {
@@ -359,12 +436,76 @@ function createQueues(): QueueState {
     return Math.min(MIN_TARGETS_AFTER_SCORE + Math.floor(score / 3), MAX_TARGETS);
   }
 
-  function clearInputState(): void {
-    game.input.up = false;
-    game.input.down = false;
-    game.input.left = false;
-    game.input.right = false;
+function clearInputState(): void {
+  setDirectionalInput("up", false);
+  setDirectionalInput("down", false);
+  setDirectionalInput("left", false);
+  setDirectionalInput("right", false);
+}
+
+function showPauseOverlay(autoPaused: boolean): void {
+  overlayMode = "pause";
+  overlayTitle.textContent = "Paused";
+  overlayMessage.textContent = autoPaused
+    ? `Score: ${game.score}. The run is frozen until you continue.`
+    : `Score: ${game.score}. Continue when you're ready.`;
+  overlayPrimaryButton.textContent = "Продолжить";
+  overlaySecondaryButton.textContent = "Начать заново";
+  overlaySecondaryButton.hidden = false;
+  overlay.classList.add("visible");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function showGameOverOverlay(): void {
+  overlayMode = "gameOver";
+  overlayTitle.textContent = "Game Over";
+  overlayMessage.textContent = `Score: ${game.score}`;
+  overlayPrimaryButton.textContent = "Начать заново";
+  overlaySecondaryButton.hidden = true;
+  overlay.classList.add("visible");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function hideOverlay(): void {
+  overlayMode = null;
+  overlay.classList.remove("visible");
+  overlay.setAttribute("aria-hidden", "true");
+}
+
+function pauseGame(autoPaused = false): void {
+  if (game.state !== "playing") return;
+
+  game.state = "paused";
+  game.accumulator = 0;
+  game.lastFrameTime = performance.now();
+  clearInputState();
+  clearActiveTouchInputs();
+  showPauseOverlay(autoPaused);
+  updateHud();
+}
+
+function resumeGame(): void {
+  if (game.state !== "paused") return;
+
+  hideOverlay();
+  clearInputState();
+  clearActiveTouchInputs();
+  game.accumulator = 0;
+  game.lastFrameTime = performance.now();
+  game.state = "playing";
+  updateHud();
+}
+
+function togglePauseGame(): void {
+  if (game.state === "playing") {
+    pauseGame(false);
+    return;
   }
+
+  if (game.state === "paused") {
+    resumeGame();
+  }
+}
 
   function createPhysicsAdapter(): PhysicsAdapter {
     let world: PhysicsWorld | null = null;
@@ -855,16 +996,18 @@ function createQueues(): QueueState {
 
         destroyFigureEntity(target);
         game.score += 1;
+        updateHud();
       }
 
       if (command.type === "game-over") {
         game.state = "gameOver";
         clearInputState();
+        clearActiveTouchInputs();
         game.queues.physics.length = 0;
         game.queues.collisionEvents.length = 0;
-        gameOverScore.textContent = `Score: ${game.score}`;
-        overlay.classList.add("visible");
-        overlay.setAttribute("aria-hidden", "false");
+        game.accumulator = 0;
+        showGameOverOverlay();
+        updateHud();
       }
     }
   }
@@ -992,27 +1135,6 @@ function createQueues(): QueueState {
     ctx.restore();
   }
 
-  function drawHud(): void {
-    const player = getPlayerEntity();
-
-    ctx.save();
-    ctx.fillStyle = "#f7fbff";
-    ctx.font = '700 24px "Trebuchet MS", "Segoe UI", sans-serif';
-    ctx.fillText(`Score: ${game.score}`, 22, 36);
-
-    if (player) {
-      ctx.font = '500 14px "Trebuchet MS", "Segoe UI", sans-serif';
-      ctx.fillStyle = "rgba(255, 255, 255, 0.74)";
-      ctx.fillText(
-        `Player: ${player.appearance.shape} / ${player.appearance.color} / ${player.appearance.fillStyle}`,
-        22,
-        58,
-      );
-    }
-
-    ctx.restore();
-  }
-
   function RenderSystem(): void {
     const metrics = getCanvasMetrics();
     ctx.clearRect(0, 0, metrics.widthCss, metrics.heightCss);
@@ -1021,13 +1143,6 @@ function createQueues(): QueueState {
     for (const entity of game.queries.renderables) {
       drawEntity(entity);
     }
-
-    drawHud();
-  }
-
-  function hideOverlay(): void {
-    overlay.classList.remove("visible");
-    overlay.setAttribute("aria-hidden", "true");
   }
 
   function resizeCanvas(): void {
@@ -1074,7 +1189,9 @@ function createQueues(): QueueState {
     game.state = "playing";
     game.queues = createQueues();
     clearInputState();
+    clearActiveTouchInputs();
     hideOverlay();
+    updateHud();
   }
 
   function seedWorld(): void {
@@ -1089,6 +1206,7 @@ function createQueues(): QueueState {
     resetRuntime();
     seedWorld();
     game.accumulator = FIXED_DT;
+    updateHud();
   }
 
   const FIXED_TICK_SYSTEMS: Array<() => void> = [
@@ -1114,11 +1232,16 @@ function createQueues(): QueueState {
   function frame(now: number): void {
     const elapsed = Math.min((now - game.lastFrameTime) / 1000, MAX_FRAME_DT);
     game.lastFrameTime = now;
-    game.accumulator += elapsed;
 
-    while (game.accumulator >= FIXED_DT) {
-      fixedUpdate();
-      game.accumulator -= FIXED_DT;
+    if (game.state === "playing") {
+      game.accumulator += elapsed;
+
+      while (game.accumulator >= FIXED_DT) {
+        fixedUpdate();
+        game.accumulator -= FIXED_DT;
+      }
+    } else {
+      game.accumulator = 0;
     }
 
     RenderSystem();
@@ -1126,37 +1249,106 @@ function createQueues(): QueueState {
   }
 
   function setInputKey(key: string, isPressed: boolean): void {
-    if (key === "arrowup" || key === "w") game.input.up = isPressed;
-    if (key === "arrowdown" || key === "s") game.input.down = isPressed;
-    if (key === "arrowleft" || key === "a") game.input.left = isPressed;
-    if (key === "arrowright" || key === "d") game.input.right = isPressed;
+    if (key === "arrowup" || key === "w") setDirectionalInput("up", isPressed);
+    if (key === "arrowdown" || key === "s") setDirectionalInput("down", isPressed);
+    if (key === "arrowleft" || key === "a") setDirectionalInput("left", isPressed);
+    if (key === "arrowright" || key === "d") setDirectionalInput("right", isPressed);
   }
 
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
-    if (!INPUT_KEYS.has(key)) return;
+    if (key === PAUSE_KEY) {
+      event.preventDefault();
+      togglePauseGame();
+      return;
+    }
+
+    if (!DIRECTIONAL_KEYS.has(key) || game.state !== "playing") return;
     event.preventDefault();
     setInputKey(key, true);
   });
 
   window.addEventListener("keyup", (event) => {
     const key = event.key.toLowerCase();
-    if (!INPUT_KEYS.has(key)) return;
+    if (!DIRECTIONAL_KEYS.has(key)) return;
     event.preventDefault();
     setInputKey(key, false);
   });
 
   window.addEventListener("blur", () => {
     clearInputState();
+    clearActiveTouchInputs();
+    pauseGame(true);
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      clearInputState();
+      clearActiveTouchInputs();
+      pauseGame(true);
+    }
   });
 
   window.addEventListener("resize", () => {
     resizeCanvas();
   });
 
-  restartButton.addEventListener("click", () => {
+  pauseButton.addEventListener("click", () => {
+    togglePauseGame();
+  });
+
+  overlayPrimaryButton.addEventListener("click", () => {
+    if (overlayMode === "pause") {
+      resumeGame();
+      return;
+    }
+
+    if (overlayMode === "gameOver") {
+      restartGame();
+    }
+  });
+
+  overlaySecondaryButton.addEventListener("click", () => {
     restartGame();
   });
+
+  function releaseTouchPointer(pointerId: number): void {
+    const inputKey = activeTouchInputs.get(pointerId);
+    if (!inputKey) return;
+
+    activeTouchInputs.delete(pointerId);
+    setDirectionalInput(inputKey, isTouchInputHeld(inputKey));
+    syncTouchButtonState();
+  }
+
+  for (const button of touchButtons) {
+    const inputKey = button.dataset.inputKey;
+    if (inputKey !== "up" && inputKey !== "down" && inputKey !== "left" && inputKey !== "right") continue;
+
+    button.addEventListener("pointerdown", (event) => {
+      if (game.state !== "playing") return;
+
+      event.preventDefault();
+      activeTouchInputs.set(event.pointerId, inputKey);
+      setDirectionalInput(inputKey, true);
+      syncTouchButtonState();
+      button.setPointerCapture(event.pointerId);
+    });
+
+    button.addEventListener("pointerup", (event) => {
+      event.preventDefault();
+      releaseTouchPointer(event.pointerId);
+    });
+
+    button.addEventListener("pointercancel", (event) => {
+      event.preventDefault();
+      releaseTouchPointer(event.pointerId);
+    });
+
+    button.addEventListener("lostpointercapture", (event) => {
+      releaseTouchPointer(event.pointerId);
+    });
+  }
 
   resizeCanvas();
   restartGame();

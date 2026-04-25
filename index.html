@@ -15,6 +15,11 @@
         --text: #f4f7fb;
         --muted: rgba(244, 247, 251, 0.72);
         --accent: #ffd166;
+        --touch-size: 68px;
+        --safe-top: max(16px, env(safe-area-inset-top));
+        --safe-right: max(16px, env(safe-area-inset-right));
+        --safe-bottom: max(16px, env(safe-area-inset-bottom));
+        --safe-left: max(16px, env(safe-area-inset-left));
       }
 
       * {
@@ -33,6 +38,10 @@
         position: relative;
         color: var(--text);
         font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        overscroll-behavior: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
         background:
           radial-gradient(circle at 18% 18%, var(--bg-glow-a), transparent 28%),
           radial-gradient(circle at 84% 78%, var(--bg-glow-b), transparent 30%),
@@ -43,9 +52,77 @@
         display: block;
         width: 100vw;
         height: 100vh;
+        touch-action: none;
+      }
+
+      .hud {
+        position: fixed;
+        top: var(--safe-top);
+        left: var(--safe-left);
+        right: var(--safe-right);
+        z-index: 2;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        pointer-events: none;
+      }
+
+      .hud-panel {
+        max-width: min(70vw, 560px);
+        padding: 14px 16px;
+        border: 1px solid var(--panel-border);
+        border-radius: 18px;
+        background: rgba(8, 12, 20, 0.72);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.26);
+        pointer-events: auto;
+      }
+
+      .hud-score {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .hud-player {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.35;
+      }
+
+      .icon-button,
+      .touch-button,
+      .modal button {
+        appearance: none;
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .icon-button {
+        min-width: 56px;
+        min-height: 56px;
+        border-radius: 18px;
+        padding: 0 18px;
+        font-weight: 800;
+        color: #101522;
+        background: linear-gradient(135deg, #ffe39b, var(--accent));
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+        pointer-events: auto;
+      }
+
+      .icon-button:active,
+      .touch-button:active,
+      .modal button:active {
+        transform: translateY(1px) scale(0.99);
       }
 
       .overlay {
+        z-index: 4;
         position: fixed;
         inset: 0;
         display: grid;
@@ -84,34 +161,138 @@
         margin: 0 0 22px;
         color: var(--muted);
         font-size: 1.05rem;
+        line-height: 1.45;
       }
 
       .modal button {
-        appearance: none;
-        border: 0;
         border-radius: 999px;
         padding: 12px 22px;
-        font: inherit;
         font-weight: 700;
         color: #101522;
         background: linear-gradient(135deg, #ffe39b, var(--accent));
-        cursor: pointer;
       }
 
       .modal button:hover {
         filter: brightness(1.03);
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .modal button.secondary {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .modal button[hidden] {
+        display: none;
+      }
+
+      .controls {
+        position: fixed;
+        right: var(--safe-right);
+        bottom: var(--safe-bottom);
+        z-index: 3;
+        display: none;
+        grid-template-columns: repeat(3, var(--touch-size));
+        grid-template-rows: repeat(3, var(--touch-size));
+        gap: 10px;
+        touch-action: none;
+      }
+
+      .touch-button {
+        display: grid;
+        place-items: center;
+        border-radius: 22px;
+        color: var(--text);
+        background: rgba(10, 15, 24, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+        font-size: 1.55rem;
+        font-weight: 800;
+        touch-action: none;
+      }
+
+      .touch-button.is-active {
+        background: rgba(255, 209, 102, 0.26);
+        border-color: rgba(255, 209, 102, 0.72);
+      }
+
+      .touch-up {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .touch-left {
+        grid-column: 1;
+        grid-row: 2;
+      }
+
+      .touch-right {
+        grid-column: 3;
+        grid-row: 2;
+      }
+
+      .touch-down {
+        grid-column: 2;
+        grid-row: 3;
+      }
+
+      @media (max-width: 720px) {
+        .hud {
+          gap: 12px;
+        }
+
+        .hud-panel {
+          max-width: none;
+          flex: 1;
+        }
+      }
+
+      @media (pointer: coarse), (hover: none) {
+        .controls {
+          display: grid;
+        }
+      }
+
+      @media (orientation: landscape) and (max-height: 520px) {
+        .controls {
+          --touch-size: 58px;
+        }
       }
     </style>
   </head>
   <body>
     <canvas id="game"></canvas>
 
-    <div id="game-over-overlay" class="overlay" aria-hidden="true">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
-        <h1 id="game-over-title">Game Over</h1>
-        <p id="game-over-score">Score: 0</p>
-        <button id="restart-button" type="button">Начать заново</button>
+    <div class="hud" aria-live="polite">
+      <div class="hud-panel">
+        <p id="hud-score" class="hud-score">Score: 0</p>
+        <p id="hud-player" class="hud-player">Player: -</p>
       </div>
+      <button id="pause-button" class="icon-button" type="button" aria-label="Pause game">II</button>
+    </div>
+
+    <div id="overlay" class="overlay" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+        <h1 id="overlay-title">Paused</h1>
+        <p id="overlay-message">Score: 0</p>
+        <div class="modal-actions">
+          <button id="overlay-primary-button" type="button">Продолжить</button>
+          <button id="overlay-secondary-button" class="secondary" type="button" hidden>Начать заново</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="touch-controls" class="controls" aria-label="Touch controls">
+      <button class="touch-button touch-up" data-input-key="up" type="button" aria-label="Move up">↑</button>
+      <button class="touch-button touch-left" data-input-key="left" type="button" aria-label="Move left">←</button>
+      <button class="touch-button touch-right" data-input-key="right" type="button" aria-label="Move right">→</button>
+      <button class="touch-button touch-down" data-input-key="down" type="button" aria-label="Move down">↓</button>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
