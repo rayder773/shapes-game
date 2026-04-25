@@ -80,7 +80,7 @@ type GameplayProfile = {
 };
 
 type PhysicsCommand = {
-  type: "apply-force";
+  type: "apply-force" | "apply-impulse";
   bodyId: PhysicsBodyId;
   force: Vec2Value;
 };
@@ -165,6 +165,7 @@ type PhysicsAdapter = {
   destroyBody(bodyId: PhysicsBodyId): void;
   setShape(bodyId: PhysicsBodyId, shapeSpec: { shape: Shape; size: number }): void;
   applyForce(bodyId: PhysicsBodyId, force: Vec2Value): void;
+  applyImpulse(bodyId: PhysicsBodyId, impulse: Vec2Value): void;
   step(dt: number): void;
   clampSpeed(bodyId: PhysicsBodyId, maxSpeed: number): void;
   readTransform(bodyId: PhysicsBodyId): Transform | null;
@@ -194,12 +195,25 @@ type JoystickState = {
   originY: number;
   dx: number;
   dy: number;
+  moved: boolean;
+};
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
 };
 
 const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
-const PLAYER_THRUST = 4;
+const PLAYER_THRUST = 5.25;
+const PLAYER_TAP_IMPULSE = 3.5;
+const MIN_POINTER_TARGET_DISTANCE = 10;
+const TOUCH_TAP_MOVE_THRESHOLD = 14;
 const MAX_SPEED = 8;
 const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.15;
@@ -219,6 +233,7 @@ const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "
 const PAUSE_KEY = "escape";
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
 const GAME_RULES = [
+  "На телефоне удерживай джойстик, на компьютере кликай по области для толчка.",
   "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
   "Если совпадает хотя бы одно свойство, забег сразу заканчивается.",
 ];
@@ -256,6 +271,12 @@ if (!(overlayElement instanceof HTMLDivElement)) {
   throw new Error("Overlay element not found");
 }
 const overlay = overlayElement;
+
+const modalElement = overlay.querySelector(".modal");
+if (!(modalElement instanceof HTMLDivElement)) {
+  throw new Error("Modal element not found");
+}
+const modal = modalElement;
 
 const overlayTitleElement = document.getElementById("overlay-title");
 if (!(overlayTitleElement instanceof HTMLHeadingElement)) {
@@ -307,12 +328,14 @@ function detectTouchDevice(): boolean {
 const isTouchDevice = detectTouchDevice();
 const game = createRuntime();
 let overlayMode: OverlayMode = null;
+let shouldRetryFullscreen = true;
 const joystickState: JoystickState = {
   pointerId: null,
   originX: 0,
   originY: 0,
   dx: 0,
   dy: 0,
+  moved: false,
 };
 
 function createRuntime(): Runtime {
@@ -452,6 +475,7 @@ function resetJoystick(): void {
   joystickState.pointerId = null;
   joystickState.dx = 0;
   joystickState.dy = 0;
+  joystickState.moved = false;
   game.analogInput.x = 0;
   game.analogInput.y = 0;
   joystick.classList.remove("visible");
@@ -467,6 +491,9 @@ function updateJoystick(pointerX: number, pointerY: number): void {
   const rawDx = pointerX - joystickState.originX;
   const rawDy = pointerY - joystickState.originY;
   const distance = Math.hypot(rawDx, rawDy);
+  if (distance >= TOUCH_TAP_MOVE_THRESHOLD) {
+    joystickState.moved = true;
+  }
   const joystickRadius = getGameplayProfile().joystickRadius;
   const limitedDistance = Math.min(distance, joystickRadius);
   const ratio = distance === 0 ? 0 : limitedDistance / distance;
@@ -529,6 +556,137 @@ function getViewportSize(): { width: number; height: number } {
 function syncViewportCssVars(widthCss: number, heightCss: number): void {
   rootStyle.setProperty("--app-width", `${widthCss}px`);
   rootStyle.setProperty("--app-height", `${heightCss}px`);
+}
+
+function applyPointerImpulse(pointerX: number, pointerY: number): void {
+  if (game.state !== "playing") return;
+
+  const player = getPlayerEntity();
+  if (!player) return;
+
+  const playerCanvasPosition = worldToCanvas(player.transform.x, player.transform.y);
+  const deltaX = pointerX - playerCanvasPosition.x;
+  const deltaY = pointerY - playerCanvasPosition.y;
+  const distance = Math.hypot(deltaX, deltaY);
+  if (distance < MIN_POINTER_TARGET_DISTANCE) return;
+
+  const normalizedX = deltaX / distance;
+  const normalizedY = -deltaY / distance;
+  game.queues.physics.push({
+    type: "apply-impulse",
+    bodyId: player.physics.bodyId,
+    force: {
+      x: normalizedX * PLAYER_TAP_IMPULSE,
+      y: normalizedY * PLAYER_TAP_IMPULSE,
+    },
+  });
+}
+
+function getFullscreenRoot(): FullscreenElement {
+  return document.documentElement as FullscreenElement;
+}
+
+function getFullscreenDocument(): FullscreenDocument {
+  return document as FullscreenDocument;
+}
+
+function isFullscreenActive(): boolean {
+  const fullscreenDocument = getFullscreenDocument();
+  return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
+}
+
+async function requestGameFullscreen(): Promise<boolean> {
+  if (isFullscreenActive()) {
+    shouldRetryFullscreen = false;
+    return true;
+  }
+
+  const fullscreenRoot = getFullscreenRoot();
+  const requestFullscreen = fullscreenRoot.requestFullscreen?.bind(fullscreenRoot)
+    ?? fullscreenRoot.webkitRequestFullscreen?.bind(fullscreenRoot);
+
+  if (!requestFullscreen) {
+    shouldRetryFullscreen = false;
+    return false;
+  }
+
+  try {
+    await requestFullscreen();
+    shouldRetryFullscreen = false;
+    return true;
+  } catch {
+    shouldRetryFullscreen = true;
+    return false;
+  }
+}
+
+function scheduleInitialFullscreenAttempt(): void {
+  void requestGameFullscreen();
+}
+
+function retryFullscreenOnUserGesture(): void {
+  if (!shouldRetryFullscreen || isFullscreenActive()) return;
+  void requestGameFullscreen();
+}
+
+function isInteractiveElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+
+  return Boolean(target.closest("button, a, input, select, textarea, summary, [role=\"button\"]"));
+}
+
+function installBrowserInteractionGuards(): void {
+  const touchOptions: AddEventListenerOptions = { passive: false };
+  const preventGesture = (event: Event): void => {
+    event.preventDefault();
+  };
+
+  document.addEventListener("touchstart", (event) => {
+    if (event.touches.length > 1) {
+      event.preventDefault();
+    }
+  }, touchOptions);
+
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 1 || !isInteractiveElement(event.target)) {
+      event.preventDefault();
+    }
+  }, touchOptions);
+
+  document.addEventListener("gesturestart", preventGesture, touchOptions);
+  document.addEventListener("gesturechange", preventGesture, touchOptions);
+  document.addEventListener("gestureend", preventGesture, touchOptions);
+  document.addEventListener("wheel", (event) => {
+    if (event.ctrlKey) {
+      event.preventDefault();
+    }
+  }, touchOptions);
+}
+
+function installDoubleTapZoomGuard(element: HTMLElement): void {
+  const touchOptions: AddEventListenerOptions = { passive: false };
+  let lastTouchEndTime = 0;
+  let lastTouchX = 0;
+  let lastTouchY = 0;
+
+  element.addEventListener("touchend", (event) => {
+    if (event.changedTouches.length !== 1) return;
+
+    const touch = event.changedTouches[0];
+    const elapsed = event.timeStamp - lastTouchEndTime;
+    const isRapidSecondTap = elapsed > 0 && elapsed < 350;
+    const isNearbyTap =
+      Math.abs(touch.clientX - lastTouchX) < 24 &&
+      Math.abs(touch.clientY - lastTouchY) < 24;
+
+    lastTouchEndTime = event.timeStamp;
+    lastTouchX = touch.clientX;
+    lastTouchY = touch.clientY;
+
+    if (isRapidSecondTap && isNearbyTap) {
+      event.preventDefault();
+    }
+  }, touchOptions);
 }
 
   function randomItem<T>(items: readonly T[]): T {
@@ -891,6 +1049,12 @@ function togglePauseGame(): void {
         body.applyForceToCenter(Vec2(force.x, force.y), true);
       },
 
+      applyImpulse(bodyId, impulse) {
+        const body = bodies.get(bodyId);
+        if (!body) return;
+        body.applyLinearImpulse(Vec2(impulse.x, impulse.y), body.getWorldCenter(), true);
+      },
+
       step(dt) {
         world?.step(dt);
       },
@@ -1123,6 +1287,11 @@ function togglePauseGame(): void {
 
       if (command.type === "apply-force") {
         game.physicsAdapter?.applyForce(command.bodyId, command.force);
+        continue;
+      }
+
+      if (command.type === "apply-impulse") {
+        game.physicsAdapter?.applyImpulse(command.bodyId, command.force);
       }
     }
   }
@@ -1546,12 +1715,21 @@ function togglePauseGame(): void {
   window.visualViewport?.addEventListener("scroll", () => {
     resizeCanvas();
   });
+  document.addEventListener("fullscreenchange", () => {
+    resizeCanvas();
+  });
+  document.addEventListener("webkitfullscreenchange", () => {
+    resizeCanvas();
+  });
 
   pauseButton.addEventListener("click", () => {
+    retryFullscreenOnUserGesture();
     togglePauseGame();
   });
 
   overlayPrimaryButton.addEventListener("click", () => {
+    retryFullscreenOnUserGesture();
+
     if (overlayMode === "onboarding") {
       setRulesAccepted();
       resumeGame();
@@ -1569,6 +1747,7 @@ function togglePauseGame(): void {
   });
 
   overlaySecondaryButton.addEventListener("click", () => {
+    retryFullscreenOnUserGesture();
     restartGame();
   });
 
@@ -1578,18 +1757,26 @@ function togglePauseGame(): void {
   }
 
   canvas.addEventListener("pointerdown", (event) => {
-    if (!isTouchDevice || event.pointerType !== "touch" || game.state !== "playing") return;
-    if (joystickState.pointerId !== null) return;
+    retryFullscreenOnUserGesture();
+    if (game.state !== "playing") return;
 
-    event.preventDefault();
-    joystickState.pointerId = event.pointerId;
-    joystickState.originX = event.clientX;
-    joystickState.originY = event.clientY;
-    setJoystickPosition(event.clientX, event.clientY);
-    joystick.classList.add("visible");
-    joystick.setAttribute("aria-hidden", "false");
-    updateJoystick(event.clientX, event.clientY);
-    canvas.setPointerCapture(event.pointerId);
+    if (event.pointerType === "touch") {
+      if (joystickState.pointerId !== null) return;
+
+      event.preventDefault();
+      joystickState.pointerId = event.pointerId;
+      joystickState.originX = event.clientX;
+      joystickState.originY = event.clientY;
+      joystickState.moved = false;
+      setJoystickPosition(event.clientX, event.clientY);
+      joystick.classList.add("visible");
+      joystick.setAttribute("aria-hidden", "false");
+      updateJoystick(event.clientX, event.clientY);
+      canvas.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    applyPointerImpulse(event.clientX, event.clientY);
   });
 
   canvas.addEventListener("pointermove", (event) => {
@@ -1601,6 +1788,9 @@ function togglePauseGame(): void {
   canvas.addEventListener("pointerup", (event) => {
     if (event.pointerId !== joystickState.pointerId) return;
     event.preventDefault();
+    if (!joystickState.moved) {
+      applyPointerImpulse(event.clientX, event.clientY);
+    }
     releaseTouchPointer(event.pointerId);
   });
 
@@ -1614,7 +1804,10 @@ function togglePauseGame(): void {
     releaseTouchPointer(event.pointerId);
   });
 
+  installBrowserInteractionGuards();
+  installDoubleTapZoomGuard(modal);
   resizeCanvas();
+  scheduleInitialFullscreenAttempt();
   resetRuntime();
   seedWorld();
   if (!areRulesAccepted()) {
