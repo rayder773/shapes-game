@@ -54,12 +54,29 @@ type GameEntity = {
 
 type InputSnapshot = Record<InputKey, boolean>;
 
+type AnalogInput = {
+  x: number;
+  y: number;
+};
+
 type CanvasMetrics = {
   dpr: number;
   widthCss: number;
   heightCss: number;
   widthPx: number;
   heightPx: number;
+};
+
+type GameplayProfile = {
+  compactTouch: boolean;
+  startTargetCount: number;
+  minTargetsAfterScore: number;
+  maxTargets: number;
+  spawnPadding: number;
+  safeSpawnPadding: number;
+  targetSpeedRange: number;
+  joystickRadius: number;
+  joystickDeadzone: number;
 };
 
 type PhysicsCommand = {
@@ -166,7 +183,9 @@ type Runtime = {
   queries: QuerySet;
   physicsAdapter: PhysicsAdapter | null;
   input: InputSnapshot;
+  analogInput: AnalogInput;
   canvasMetrics: CanvasMetrics;
+  gameplayProfile: GameplayProfile;
   queues: QueueState;
 };
 
@@ -182,20 +201,14 @@ const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
 const START_COUNTDOWN_SECONDS = 3;
-const JOYSTICK_RADIUS = 36;
-const JOYSTICK_DEADZONE = 10;
 const PLAYER_THRUST = 4;
 const MAX_SPEED = 8;
 const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.15;
 const ENTITY_SIZE = 0.55;
 const WALL_THICKNESS = 0.35;
-const START_TOTAL_ENTITIES = 10;
-const MIN_TARGETS_AFTER_SCORE = 10;
-const MAX_TARGETS = 20;
-const SPAWN_PADDING = 1.8;
-const SAFE_SPAWN_PADDING = 2.3;
 const MAX_SPAWN_ATTEMPTS = 80;
+const COMPACT_TOUCH_BREAKPOINT = 820;
 const SHAPES: Shape[] = ["circle", "square", "triangle"];
 const COLORS: ColorName[] = ["red", "blue", "green"];
 const FILL_STYLES: FillStyleName[] = ["filled", "outline", "dashed"];
@@ -283,6 +296,11 @@ if (!(joystickKnobElement instanceof HTMLDivElement)) {
 }
 const joystickKnob = joystickKnobElement;
 
+function detectTouchDevice(): boolean {
+  return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
+}
+
+const isTouchDevice = detectTouchDevice();
 const game = createRuntime();
 let overlayMode: OverlayMode = null;
 const joystickState: JoystickState = {
@@ -292,10 +310,10 @@ const joystickState: JoystickState = {
   dx: 0,
   dy: 0,
 };
-const isTouchDevice = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
+  const canvasMetrics = createCanvasMetrics();
 
   return {
     state: "boot",
@@ -308,7 +326,9 @@ function createRuntime(): Runtime {
     queries: createQueries(ecsWorld),
     physicsAdapter: null,
     input: createInputSnapshot(),
-    canvasMetrics: createCanvasMetrics(),
+    analogInput: createAnalogInput(),
+    canvasMetrics,
+    gameplayProfile: createGameplayProfile(canvasMetrics),
     queues: createQueues(),
   };
 }
@@ -331,12 +351,80 @@ function createInputSnapshot(): InputSnapshot {
   };
 }
 
+function createAnalogInput(): AnalogInput {
+  return {
+    x: 0,
+    y: 0,
+  };
+}
+
+function createGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
+  const compactTouch = isTouchDevice && Math.min(metrics.widthCss || 0, metrics.heightCss || 0) < COMPACT_TOUCH_BREAKPOINT;
+
+  if (compactTouch) {
+    return {
+      compactTouch,
+      startTargetCount: 5,
+      minTargetsAfterScore: 6,
+      maxTargets: 12,
+      spawnPadding: 2.25,
+      safeSpawnPadding: 3.1,
+      targetSpeedRange: 2.4,
+      joystickRadius: 44,
+      joystickDeadzone: 8,
+    };
+  }
+
+  return {
+    compactTouch,
+    startTargetCount: 9,
+    minTargetsAfterScore: 10,
+    maxTargets: 20,
+    spawnPadding: 1.8,
+    safeSpawnPadding: 2.3,
+    targetSpeedRange: 3.5,
+    joystickRadius: 36,
+    joystickDeadzone: 10,
+  };
+}
+
+function getGameplayProfile(): GameplayProfile {
+  return game.gameplayProfile;
+}
+
+function updateGameplayProfile(): void {
+  game.gameplayProfile = createGameplayProfile(game.canvasMetrics);
+}
+
+function getShapeHudLabel(shape: Shape): string {
+  if (shape === "circle") return "○";
+  if (shape === "square") return "□";
+  return "△";
+}
+
+function getFillHudLabel(fillStyle: FillStyleName, compact: boolean): string {
+  if (!compact) return fillStyle;
+  if (fillStyle === "filled") return "fill";
+  if (fillStyle === "outline") return "line";
+  return "dash";
+}
+
+function formatPlayerHud(appearance: Appearance, compact: boolean): string {
+  if (!compact) {
+    return `Игрок: ${appearance.shape} / ${appearance.color} / ${appearance.fillStyle}`;
+  }
+
+  return `Игрок: ${getShapeHudLabel(appearance.shape)} ${appearance.color} ${getFillHudLabel(appearance.fillStyle, true)}`;
+}
+
 function updateHud(): void {
   const player = getPlayerEntity();
+  const compactHud = getGameplayProfile().compactTouch;
   hudScore.textContent = `Счет: ${game.score}`;
   hudPlayer.textContent = player
-    ? `Игрок: ${player.appearance.shape} / ${player.appearance.color} / ${player.appearance.fillStyle}`
+    ? formatPlayerHud(player.appearance, compactHud)
     : "Игрок: -";
+  hudPlayer.dataset.compact = compactHud ? "true" : "false";
   pauseButton.textContent = game.state === "paused" ? "▶" : "II";
   pauseButton.setAttribute("aria-label", game.state === "paused" ? "Продолжить игру" : "Поставить игру на паузу");
 }
@@ -353,21 +441,19 @@ function setJoystickPosition(x: number, y: number): void {
 function applyJoystickInput(dx: number, dy: number): void {
   joystickState.dx = dx;
   joystickState.dy = dy;
-
-  setDirectionalInput("left", dx < -JOYSTICK_DEADZONE);
-  setDirectionalInput("right", dx > JOYSTICK_DEADZONE);
-  setDirectionalInput("up", dy < -JOYSTICK_DEADZONE);
-  setDirectionalInput("down", dy > JOYSTICK_DEADZONE);
+  game.analogInput.x = dx;
+  game.analogInput.y = dy;
 }
 
 function resetJoystick(): void {
   joystickState.pointerId = null;
   joystickState.dx = 0;
   joystickState.dy = 0;
+  game.analogInput.x = 0;
+  game.analogInput.y = 0;
   joystick.classList.remove("visible");
   joystick.setAttribute("aria-hidden", "true");
   joystickKnob.style.transform = "translate(0px, 0px)";
-  clearInputState();
 }
 
 function clearActiveTouchInputs(): void {
@@ -378,13 +464,28 @@ function updateJoystick(pointerX: number, pointerY: number): void {
   const rawDx = pointerX - joystickState.originX;
   const rawDy = pointerY - joystickState.originY;
   const distance = Math.hypot(rawDx, rawDy);
-  const limitedDistance = Math.min(distance, JOYSTICK_RADIUS);
+  const joystickRadius = getGameplayProfile().joystickRadius;
+  const limitedDistance = Math.min(distance, joystickRadius);
   const ratio = distance === 0 ? 0 : limitedDistance / distance;
   const dx = rawDx * ratio;
   const dy = rawDy * ratio;
+  const normalizedX = joystickRadius === 0 ? 0 : dx / joystickRadius;
+  const normalizedY = joystickRadius === 0 ? 0 : dy / joystickRadius;
+  const deadzoneRatio = joystickRadius === 0 ? 0 : getGameplayProfile().joystickDeadzone / joystickRadius;
+  const magnitude = Math.hypot(normalizedX, normalizedY);
+
+  if (magnitude <= deadzoneRatio) {
+    joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+    applyJoystickInput(0, 0);
+    return;
+  }
+
+  const easedMagnitude = clamp((magnitude - deadzoneRatio) / (1 - deadzoneRatio), 0, 1);
+  const directionX = magnitude === 0 ? 0 : normalizedX / magnitude;
+  const directionY = magnitude === 0 ? 0 : normalizedY / magnitude;
 
   joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-  applyJoystickInput(dx, dy);
+  applyJoystickInput(directionX * easedMagnitude, directionY * easedMagnitude);
 }
 
 function createCanvasMetrics(): CanvasMetrics {
@@ -481,11 +582,13 @@ function createQueues(): QueueState {
   }
 
   function getDesiredTargetCount(score: number): number {
+    const profile = getGameplayProfile();
+
     if (score === 0) {
-      return START_TOTAL_ENTITIES - 1;
+      return profile.startTargetCount;
     }
 
-    return Math.min(MIN_TARGETS_AFTER_SCORE + Math.floor(score / 3), MAX_TARGETS);
+    return Math.min(profile.minTargetsAfterScore + Math.floor(score / 3), profile.maxTargets);
   }
 
 function clearInputState(): void {
@@ -493,6 +596,8 @@ function clearInputState(): void {
   setDirectionalInput("down", false);
   setDirectionalInput("left", false);
   setDirectionalInput("right", false);
+  game.analogInput.x = 0;
+  game.analogInput.y = 0;
 }
 
 function setOverlayTips(items: string[]): void {
@@ -939,9 +1044,12 @@ function togglePauseGame(): void {
     appearance?: Appearance | null;
     safeForAppearance?: Appearance | null;
     spawnPadding?: number;
+    speedRange?: number;
   }): GameEntity {
     const isPlayer = options.isPlayer ?? false;
-    const spawnPadding = options.spawnPadding ?? SPAWN_PADDING;
+    const profile = getGameplayProfile();
+    const spawnPadding = options.spawnPadding ?? profile.spawnPadding;
+    const speedRange = options.speedRange ?? profile.targetSpeedRange;
     const nextAppearance: Appearance = options.appearance ?? {
       ...createEntityProperties(options.safeForAppearance ?? null),
       size: ENTITY_SIZE,
@@ -980,8 +1088,8 @@ function togglePauseGame(): void {
       shape: nextAppearance.shape,
       size: nextAppearance.size,
       velocity: {
-        x: randomRange(-3.5, 3.5),
-        y: randomRange(-3.5, 3.5),
+        x: isPlayer ? 0 : randomRange(-speedRange, speedRange),
+        y: isPlayer ? 0 : randomRange(-speedRange, speedRange),
       },
       angularVelocity: randomRange(-1.4, 1.4),
     });
@@ -1008,10 +1116,15 @@ function togglePauseGame(): void {
     let forceX = 0;
     let forceY = 0;
 
-    if (game.input.up) forceY += PLAYER_THRUST;
-    if (game.input.down) forceY -= PLAYER_THRUST;
-    if (game.input.left) forceX -= PLAYER_THRUST;
-    if (game.input.right) forceX += PLAYER_THRUST;
+    if (joystickState.pointerId !== null) {
+      forceX = game.analogInput.x * PLAYER_THRUST;
+      forceY = -game.analogInput.y * PLAYER_THRUST;
+    } else {
+      if (game.input.up) forceY += PLAYER_THRUST;
+      if (game.input.down) forceY -= PLAYER_THRUST;
+      if (game.input.left) forceX -= PLAYER_THRUST;
+      if (game.input.right) forceX += PLAYER_THRUST;
+    }
 
     if (forceX === 0 && forceY === 0) return;
 
@@ -1196,7 +1309,7 @@ function togglePauseGame(): void {
       createFigureEntity({
         isPlayer: false,
         safeForAppearance: request.safeForPlayer ? request.safeAppearance ?? null : null,
-        spawnPadding: request.safeForPlayer ? SAFE_SPAWN_PADDING : SPAWN_PADDING,
+        spawnPadding: request.safeForPlayer ? getGameplayProfile().safeSpawnPadding : getGameplayProfile().spawnPadding,
       });
     }
   }
@@ -1299,6 +1412,7 @@ function togglePauseGame(): void {
     game.canvasMetrics.heightCss = heightCss;
     game.canvasMetrics.widthPx = widthPx;
     game.canvasMetrics.heightPx = heightPx;
+    updateGameplayProfile();
 
     if (canvas.width !== widthPx || canvas.height !== heightPx) {
       canvas.width = widthPx;
@@ -1339,9 +1453,14 @@ function togglePauseGame(): void {
 
   function seedWorld(): void {
     createFigureEntity({ isPlayer: true });
+    const profile = getGameplayProfile();
+    const startPadding = profile.compactTouch ? profile.safeSpawnPadding : profile.spawnPadding;
 
-    for (let index = 0; index < START_TOTAL_ENTITIES - 1; index += 1) {
-      createFigureEntity({ isPlayer: false });
+    for (let index = 0; index < profile.startTargetCount; index += 1) {
+      createFigureEntity({
+        isPlayer: false,
+        spawnPadding: startPadding,
+      });
     }
   }
 

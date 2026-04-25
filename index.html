@@ -91,6 +91,14 @@
         color: var(--muted);
         font-size: 0.95rem;
         line-height: 1.35;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .hud-player[data-compact="true"] {
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
       }
 
       .icon-button,
@@ -265,7 +273,10 @@
         }
 
         .hud-player {
-          display: none;
+          margin-top: 6px;
+          font-size: 0.74rem;
+          line-height: 1.2;
+          color: rgba(244, 247, 251, 0.86);
         }
 
         .icon-button {
