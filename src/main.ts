@@ -18,8 +18,8 @@ type ColorName = "red" | "blue" | "green";
 type FillStyleName = "filled" | "outline" | "dashed";
 type InputKey = "up" | "down" | "left" | "right";
 type PhysicsBodyKind = "entity" | "wall";
-type GameState = "boot" | "countdown" | "playing" | "paused" | "gameOver";
-type OverlayMode = "onboarding" | "countdown" | "pause" | "gameOver" | null;
+type GameState = "boot" | "playing" | "paused" | "gameOver";
+type OverlayMode = "onboarding" | "pause" | "gameOver" | null;
 
 type EntityId = number;
 type PhysicsBodyId = number;
@@ -178,7 +178,6 @@ type Runtime = {
   nextEntityId: number;
   accumulator: number;
   lastFrameTime: number;
-  countdownRemaining: number;
   ecsWorld: ECSWorld<GameEntity>;
   queries: QuerySet;
   physicsAdapter: PhysicsAdapter | null;
@@ -200,7 +199,6 @@ type JoystickState = {
 const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
-const START_COUNTDOWN_SECONDS = 3;
 const PLAYER_THRUST = 4;
 const MAX_SPEED = 8;
 const LINEAR_DAMPING = 0;
@@ -219,6 +217,11 @@ const COLOR_MAP: Record<ColorName, string> = {
 };
 const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
 const PAUSE_KEY = "escape";
+const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
+const GAME_RULES = [
+  "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
+  "Если совпадает хотя бы одно свойство, забег сразу заканчивается.",
+];
 const canvasElement = document.getElementById("game");
 if (!(canvasElement instanceof HTMLCanvasElement)) {
   throw new Error("Canvas element not found");
@@ -321,7 +324,6 @@ function createRuntime(): Runtime {
     nextEntityId: 1,
     accumulator: 0,
     lastFrameTime: 0,
-    countdownRemaining: 0,
     ecsWorld,
     queries: createQueries(ecsWorld),
     physicsAdapter: null,
@@ -617,22 +619,21 @@ function setOverlayTips(items: string[]): void {
   overlayTips.hidden = false;
 }
 
-function showOnboardingOverlay(reason: "initial" | "restart"): void {
+function areRulesAccepted(): boolean {
+  return window.localStorage.getItem(RULES_STORAGE_KEY) === "true";
+}
+
+function setRulesAccepted(): void {
+  window.localStorage.setItem(RULES_STORAGE_KEY, "true");
+}
+
+function showOnboardingOverlay(): void {
   overlayMode = "onboarding";
-  overlayTitle.textContent = reason === "initial" ? "Приготовься" : "Новый забег";
-  overlayMessage.textContent = isTouchDevice
-    ? "Коснись экрана и веди пальцем в нужную сторону. Съедать можно только те фигуры, которые отличаются по всем трем свойствам."
-    : "Управляй фигурой через WASD или стрелки. Съедать можно только те фигуры, которые отличаются по всем трем свойствам.";
-  setOverlayTips([
-    isTouchDevice
-      ? "Плавающий джойстик появляется под пальцем только во время касания и не занимает экран постоянно."
-      : "Удерживай одну или две клавиши направления, чтобы двигаться в сторону или по диагонали.",
-    "Пауза доступна в любой момент через кнопку справа сверху или по Escape на компьютере.",
-    "Если у цели совпадает хотя бы одно свойство, забег сразу заканчивается.",
-  ]);
-  overlayPrimaryButton.textContent = reason === "initial" ? "Играть" : "Поехали";
-  overlaySecondaryButton.textContent = "Начать заново";
-  overlaySecondaryButton.hidden = reason === "initial";
+  overlayTitle.textContent = "Правила";
+  overlayMessage.textContent = "";
+  setOverlayTips(GAME_RULES);
+  overlayPrimaryButton.textContent = "Понятно";
+  overlaySecondaryButton.hidden = true;
   overlay.classList.add("visible");
   overlay.setAttribute("aria-hidden", "false");
 }
@@ -640,24 +641,11 @@ function showOnboardingOverlay(reason: "initial" | "restart"): void {
 function showPauseOverlay(autoPaused: boolean): void {
   overlayMode = "pause";
   overlayTitle.textContent = "Пауза";
-  overlayMessage.textContent = autoPaused
-    ? `Счет: ${game.score}. Игра остановлена, пока ты не продолжишь.`
-    : `Счет: ${game.score}. Продолжай, когда будешь готов.`;
-  setOverlayTips([]);
+  overlayMessage.textContent = autoPaused ? "Игра остановлена." : "";
+  setOverlayTips(GAME_RULES);
   overlayPrimaryButton.textContent = "Продолжить";
   overlaySecondaryButton.textContent = "Начать заново";
   overlaySecondaryButton.hidden = false;
-  overlay.classList.add("visible");
-  overlay.setAttribute("aria-hidden", "false");
-}
-
-function showCountdownOverlay(): void {
-  overlayMode = "countdown";
-  overlayTitle.textContent = "Старт";
-  overlayMessage.textContent = `Начинаем через ${Math.ceil(game.countdownRemaining)}...`;
-  setOverlayTips(["Столкновения начнут работать сразу после окончания отсчета."]);
-  overlayPrimaryButton.textContent = "Подождать";
-  overlaySecondaryButton.hidden = true;
   overlay.classList.add("visible");
   overlay.setAttribute("aria-hidden", "false");
 }
@@ -704,42 +692,13 @@ function resumeGame(): void {
   updateHud();
 }
 
-function beginSoftStart(): void {
-  game.state = "countdown";
-  game.countdownRemaining = START_COUNTDOWN_SECONDS;
-  game.accumulator = 0;
-  game.lastFrameTime = performance.now();
-  clearInputState();
-  clearActiveTouchInputs();
-  showCountdownOverlay();
-  updateHud();
-}
-
-function updateCountdown(elapsed: number): void {
-  if (game.state !== "countdown") return;
-
-  game.countdownRemaining = Math.max(0, game.countdownRemaining - elapsed);
-
-  if (game.countdownRemaining === 0) {
-    hideOverlay();
-    game.state = "playing";
-    game.accumulator = 0;
-    game.lastFrameTime = performance.now();
-    updateHud();
-    return;
-  }
-
-  overlayMessage.textContent = `Начинаем через ${Math.ceil(game.countdownRemaining)}...`;
-}
-
-function startOnboarding(reason: "initial" | "restart"): void {
+function startOnboarding(): void {
   game.state = "paused";
-  game.countdownRemaining = 0;
   game.accumulator = 0;
   game.lastFrameTime = performance.now();
   clearInputState();
   clearActiveTouchInputs();
-  showOnboardingOverlay(reason);
+  showOnboardingOverlay();
   updateHud();
 }
 
@@ -1440,7 +1399,6 @@ function togglePauseGame(): void {
     createECSRuntime();
     game.score = 0;
     game.nextEntityId = 1;
-    game.countdownRemaining = 0;
     game.accumulator = 0;
     game.lastFrameTime = performance.now();
     game.state = "playing";
@@ -1464,15 +1422,9 @@ function togglePauseGame(): void {
     }
   }
 
-  function restartGame(showOnboarding = true): void {
+  function restartGame(): void {
     resetRuntime();
     seedWorld();
-    if (showOnboarding) {
-      startOnboarding("restart");
-      return;
-    }
-
-    beginSoftStart();
   }
 
   const FIXED_TICK_SYSTEMS: Array<() => void> = [
@@ -1506,8 +1458,6 @@ function togglePauseGame(): void {
         fixedUpdate();
         game.accumulator -= FIXED_DT;
       }
-    } else if (game.state === "countdown") {
-      updateCountdown(elapsed);
     } else {
       game.accumulator = 0;
     }
@@ -1526,7 +1476,6 @@ function togglePauseGame(): void {
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
     if (key === PAUSE_KEY) {
-      if (game.state === "countdown") return;
       event.preventDefault();
       togglePauseGame();
       return;
@@ -1563,13 +1512,13 @@ function togglePauseGame(): void {
   });
 
   pauseButton.addEventListener("click", () => {
-    if (game.state === "countdown") return;
     togglePauseGame();
   });
 
   overlayPrimaryButton.addEventListener("click", () => {
     if (overlayMode === "onboarding") {
-      beginSoftStart();
+      setRulesAccepted();
+      resumeGame();
       return;
     }
 
@@ -1632,5 +1581,7 @@ function togglePauseGame(): void {
   resizeCanvas();
   resetRuntime();
   seedWorld();
-  startOnboarding("initial");
+  if (!areRulesAccepted()) {
+    startOnboarding();
+  }
   requestAnimationFrame(frame);
