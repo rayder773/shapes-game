@@ -19,7 +19,7 @@ type FillStyleName = "filled" | "outline" | "dashed";
 type InputKey = "up" | "down" | "left" | "right";
 type PhysicsBodyKind = "entity" | "wall";
 type GameState = "boot" | "playing" | "paused" | "gameOver";
-type OverlayMode = "pause" | "gameOver" | null;
+type OverlayMode = "onboarding" | "pause" | "gameOver" | null;
 
 type EntityId = number;
 type PhysicsBodyId = number;
@@ -241,6 +241,12 @@ if (!(overlayMessageElement instanceof HTMLParagraphElement)) {
 }
 const overlayMessage = overlayMessageElement;
 
+const overlayTipsElement = document.getElementById("overlay-tips");
+if (!(overlayTipsElement instanceof HTMLUListElement)) {
+  throw new Error("Overlay tips element not found");
+}
+const overlayTips = overlayTipsElement;
+
 const overlayPrimaryButtonElement = document.getElementById("overlay-primary-button");
 if (!(overlayPrimaryButtonElement instanceof HTMLButtonElement)) {
   throw new Error("Overlay primary button element not found");
@@ -265,6 +271,7 @@ for (const button of touchButtons) {
 const game = createRuntime();
 let overlayMode: OverlayMode = null;
 const activeTouchInputs = new Map<number, InputKey>();
+const isTouchDevice = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
@@ -304,12 +311,12 @@ function createInputSnapshot(): InputSnapshot {
 
 function updateHud(): void {
   const player = getPlayerEntity();
-  hudScore.textContent = `Score: ${game.score}`;
+  hudScore.textContent = `Счет: ${game.score}`;
   hudPlayer.textContent = player
-    ? `Player: ${player.appearance.shape} / ${player.appearance.color} / ${player.appearance.fillStyle}`
-    : "Player: -";
+    ? `Игрок: ${player.appearance.shape} / ${player.appearance.color} / ${player.appearance.fillStyle}`
+    : "Игрок: -";
   pauseButton.textContent = game.state === "paused" ? "▶" : "II";
-  pauseButton.setAttribute("aria-label", game.state === "paused" ? "Resume game" : "Pause game");
+  pauseButton.setAttribute("aria-label", game.state === "paused" ? "Продолжить игру" : "Поставить игру на паузу");
 }
 
 function setDirectionalInput(inputKey: InputKey, isPressed: boolean): void {
@@ -443,12 +450,50 @@ function clearInputState(): void {
   setDirectionalInput("right", false);
 }
 
+function setOverlayTips(items: string[]): void {
+  overlayTips.replaceChildren();
+
+  if (items.length === 0) {
+    overlayTips.hidden = true;
+    return;
+  }
+
+  for (const item of items) {
+    const listItem = document.createElement("li");
+    listItem.textContent = item;
+    overlayTips.append(listItem);
+  }
+
+  overlayTips.hidden = false;
+}
+
+function showOnboardingOverlay(reason: "initial" | "restart"): void {
+  overlayMode = "onboarding";
+  overlayTitle.textContent = reason === "initial" ? "Приготовься" : "Новый забег";
+  overlayMessage.textContent = isTouchDevice
+    ? "Управляй фигурой через экранный D-pad. Съедать можно только те фигуры, которые отличаются по всем трем свойствам."
+    : "Управляй фигурой через WASD или стрелки. Съедать можно только те фигуры, которые отличаются по всем трем свойствам.";
+  setOverlayTips([
+    isTouchDevice
+      ? "Удерживай одну или две кнопки D-pad, чтобы двигаться в сторону или по диагонали."
+      : "Удерживай одну или две клавиши направления, чтобы двигаться в сторону или по диагонали.",
+    "Пауза доступна в любой момент через кнопку справа сверху или по Escape на компьютере.",
+    "Если у цели совпадает хотя бы одно свойство, забег сразу заканчивается.",
+  ]);
+  overlayPrimaryButton.textContent = reason === "initial" ? "Играть" : "Поехали";
+  overlaySecondaryButton.textContent = "Начать заново";
+  overlaySecondaryButton.hidden = reason === "initial";
+  overlay.classList.add("visible");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
 function showPauseOverlay(autoPaused: boolean): void {
   overlayMode = "pause";
-  overlayTitle.textContent = "Paused";
+  overlayTitle.textContent = "Пауза";
   overlayMessage.textContent = autoPaused
-    ? `Score: ${game.score}. The run is frozen until you continue.`
-    : `Score: ${game.score}. Continue when you're ready.`;
+    ? `Счет: ${game.score}. Игра остановлена, пока ты не продолжишь.`
+    : `Счет: ${game.score}. Продолжай, когда будешь готов.`;
+  setOverlayTips([]);
   overlayPrimaryButton.textContent = "Продолжить";
   overlaySecondaryButton.textContent = "Начать заново";
   overlaySecondaryButton.hidden = false;
@@ -458,8 +503,9 @@ function showPauseOverlay(autoPaused: boolean): void {
 
 function showGameOverOverlay(): void {
   overlayMode = "gameOver";
-  overlayTitle.textContent = "Game Over";
-  overlayMessage.textContent = `Score: ${game.score}`;
+  overlayTitle.textContent = "Игра окончена";
+  overlayMessage.textContent = `Счет: ${game.score}`;
+  setOverlayTips([]);
   overlayPrimaryButton.textContent = "Начать заново";
   overlaySecondaryButton.hidden = true;
   overlay.classList.add("visible");
@@ -468,6 +514,7 @@ function showGameOverOverlay(): void {
 
 function hideOverlay(): void {
   overlayMode = null;
+  setOverlayTips([]);
   overlay.classList.remove("visible");
   overlay.setAttribute("aria-hidden", "true");
 }
@@ -493,6 +540,16 @@ function resumeGame(): void {
   game.accumulator = 0;
   game.lastFrameTime = performance.now();
   game.state = "playing";
+  updateHud();
+}
+
+function startOnboarding(reason: "initial" | "restart"): void {
+  game.state = "paused";
+  game.accumulator = 0;
+  game.lastFrameTime = performance.now();
+  clearInputState();
+  clearActiveTouchInputs();
+  showOnboardingOverlay(reason);
   updateHud();
 }
 
@@ -1202,9 +1259,14 @@ function togglePauseGame(): void {
     }
   }
 
-  function restartGame(): void {
+  function restartGame(showOnboarding = true): void {
     resetRuntime();
     seedWorld();
+    if (showOnboarding) {
+      startOnboarding("restart");
+      return;
+    }
+
     game.accumulator = FIXED_DT;
     updateHud();
   }
@@ -1298,6 +1360,11 @@ function togglePauseGame(): void {
   });
 
   overlayPrimaryButton.addEventListener("click", () => {
+    if (overlayMode === "onboarding") {
+      resumeGame();
+      return;
+    }
+
     if (overlayMode === "pause") {
       resumeGame();
       return;
@@ -1351,5 +1418,7 @@ function togglePauseGame(): void {
   }
 
   resizeCanvas();
-  restartGame();
+  resetRuntime();
+  seedWorld();
+  startOnboarding("initial");
   requestAnimationFrame(frame);

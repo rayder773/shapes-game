@@ -164,6 +164,18 @@
         line-height: 1.45;
       }
 
+      .overlay-tips {
+        margin: -8px 0 22px;
+        padding-left: 20px;
+        color: rgba(244, 247, 251, 0.84);
+        text-align: left;
+        line-height: 1.5;
+      }
+
+      .overlay-tips[hidden] {
+        display: none;
+      }
+
       .modal button {
         border-radius: 999px;
         padding: 12px 22px;
@@ -271,16 +283,17 @@
 
     <div class="hud" aria-live="polite">
       <div class="hud-panel">
-        <p id="hud-score" class="hud-score">Score: 0</p>
-        <p id="hud-player" class="hud-player">Player: -</p>
+        <p id="hud-score" class="hud-score">Счет: 0</p>
+        <p id="hud-player" class="hud-player">Игрок: -</p>
       </div>
-      <button id="pause-button" class="icon-button" type="button" aria-label="Pause game">II</button>
+      <button id="pause-button" class="icon-button" type="button" aria-label="Поставить игру на паузу">II</button>
     </div>
 
     <div id="overlay" class="overlay" aria-hidden="true">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
-        <h1 id="overlay-title">Paused</h1>
-        <p id="overlay-message">Score: 0</p>
+        <h1 id="overlay-title">Пауза</h1>
+        <p id="overlay-message">Счет: 0</p>
+        <ul id="overlay-tips" class="overlay-tips" hidden></ul>
         <div class="modal-actions">
           <button id="overlay-primary-button" type="button">Продолжить</button>
           <button id="overlay-secondary-button" class="secondary" type="button" hidden>Начать заново</button>
@@ -288,11 +301,11 @@
       </div>
     </div>
 
-    <div id="touch-controls" class="controls" aria-label="Touch controls">
-      <button class="touch-button touch-up" data-input-key="up" type="button" aria-label="Move up">↑</button>
-      <button class="touch-button touch-left" data-input-key="left" type="button" aria-label="Move left">←</button>
-      <button class="touch-button touch-right" data-input-key="right" type="button" aria-label="Move right">→</button>
-      <button class="touch-button touch-down" data-input-key="down" type="button" aria-label="Move down">↓</button>
+    <div id="touch-controls" class="controls" aria-label="Сенсорное управление">
+      <button class="touch-button touch-up" data-input-key="up" type="button" aria-label="Двигаться вверх">↑</button>
+      <button class="touch-button touch-left" data-input-key="left" type="button" aria-label="Двигаться влево">←</button>
+      <button class="touch-button touch-right" data-input-key="right" type="button" aria-label="Двигаться вправо">→</button>
+      <button class="touch-button touch-down" data-input-key="down" type="button" aria-label="Двигаться вниз">↓</button>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
