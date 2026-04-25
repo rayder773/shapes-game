@@ -1321,7 +1321,7 @@ function togglePauseGame(): void {
   function drawRoomBorder(): void {
     const metrics = getCanvasMetrics();
     ctx.save();
-    ctx.strokeStyle = "red";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, metrics.widthCss - 2, metrics.heightCss - 2);
     ctx.restore();
