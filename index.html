@@ -15,7 +15,6 @@
         --text: #f4f7fb;
         --muted: rgba(244, 247, 251, 0.72);
         --accent: #ffd166;
-        --touch-size: 68px;
         --safe-top: max(16px, env(safe-area-inset-top));
         --safe-right: max(16px, env(safe-area-inset-right));
         --safe-bottom: max(16px, env(safe-area-inset-bottom));
@@ -95,7 +94,6 @@
       }
 
       .icon-button,
-      .touch-button,
       .modal button {
         appearance: none;
         border: 0;
@@ -116,7 +114,6 @@
       }
 
       .icon-button:active,
-      .touch-button:active,
       .modal button:active {
         transform: translateY(1px) scale(0.99);
       }
@@ -204,54 +201,37 @@
         display: none;
       }
 
-      .controls {
+      .joystick {
         position: fixed;
-        right: var(--safe-right);
-        bottom: var(--safe-bottom);
         z-index: 3;
         display: none;
-        grid-template-columns: repeat(3, var(--touch-size));
-        grid-template-rows: repeat(3, var(--touch-size));
-        gap: 10px;
+        width: 96px;
+        height: 96px;
+        margin-left: -48px;
+        margin-top: -48px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(10, 15, 24, 0.18);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+        backdrop-filter: blur(8px);
         touch-action: none;
       }
 
-      .touch-button {
-        display: grid;
-        place-items: center;
-        border-radius: 22px;
-        color: var(--text);
-        background: rgba(10, 15, 24, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
-        font-size: 1.55rem;
-        font-weight: 800;
-        touch-action: none;
+      .joystick.visible {
+        display: block;
       }
 
-      .touch-button.is-active {
-        background: rgba(255, 209, 102, 0.26);
-        border-color: rgba(255, 209, 102, 0.72);
-      }
-
-      .touch-up {
-        grid-column: 2;
-        grid-row: 1;
-      }
-
-      .touch-left {
-        grid-column: 1;
-        grid-row: 2;
-      }
-
-      .touch-right {
-        grid-column: 3;
-        grid-row: 2;
-      }
-
-      .touch-down {
-        grid-column: 2;
-        grid-row: 3;
+      .joystick-knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 44px;
+        height: 44px;
+        margin-left: -22px;
+        margin-top: -22px;
+        border-radius: 50%;
+        background: rgba(255, 209, 102, 0.72);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
       }
 
       @media (max-width: 720px) {
@@ -266,14 +246,76 @@
       }
 
       @media (pointer: coarse), (hover: none) {
-        .controls {
-          display: grid;
+        .hud {
+          align-items: center;
+          gap: 10px;
+        }
+
+        .hud-panel {
+          max-width: min(56vw, 220px);
+          padding: 10px 12px;
+          border-radius: 14px;
+          background: rgba(8, 12, 20, 0.46);
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+        }
+
+        .hud-score {
+          font-size: 0.9rem;
+          letter-spacing: 0.03em;
+        }
+
+        .hud-player {
+          display: none;
+        }
+
+        .icon-button {
+          min-width: 44px;
+          min-height: 44px;
+          padding: 0 12px;
+          border-radius: 14px;
+          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+        }
+
+        .joystick {
+          width: 88px;
+          height: 88px;
+          margin-left: -44px;
+          margin-top: -44px;
         }
       }
 
       @media (orientation: landscape) and (max-height: 520px) {
-        .controls {
-          --touch-size: 58px;
+        .hud {
+          top: max(8px, env(safe-area-inset-top));
+        }
+
+        .hud-panel {
+          max-width: min(48vw, 180px);
+          padding: 8px 10px;
+        }
+
+        .hud-score {
+          font-size: 0.82rem;
+        }
+
+        .icon-button {
+          min-width: 40px;
+          min-height: 40px;
+          padding: 0 10px;
+        }
+
+        .joystick {
+          width: 74px;
+          height: 74px;
+          margin-left: -37px;
+          margin-top: -37px;
+        }
+
+        .joystick-knob {
+          width: 34px;
+          height: 34px;
+          margin-left: -17px;
+          margin-top: -17px;
         }
       }
     </style>
@@ -301,11 +343,8 @@
       </div>
     </div>
 
-    <div id="touch-controls" class="controls" aria-label="Сенсорное управление">
-      <button class="touch-button touch-up" data-input-key="up" type="button" aria-label="Двигаться вверх">↑</button>
-      <button class="touch-button touch-left" data-input-key="left" type="button" aria-label="Двигаться влево">←</button>
-      <button class="touch-button touch-right" data-input-key="right" type="button" aria-label="Двигаться вправо">→</button>
-      <button class="touch-button touch-down" data-input-key="down" type="button" aria-label="Двигаться вниз">↓</button>
+    <div id="joystick" class="joystick" aria-hidden="true">
+      <div id="joystick-knob" class="joystick-knob"></div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

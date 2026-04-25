@@ -170,10 +170,20 @@ type Runtime = {
   queues: QueueState;
 };
 
+type JoystickState = {
+  pointerId: number | null;
+  originX: number;
+  originY: number;
+  dx: number;
+  dy: number;
+};
+
 const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
 const START_COUNTDOWN_SECONDS = 3;
+const JOYSTICK_RADIUS = 36;
+const JOYSTICK_DEADZONE = 10;
 const PLAYER_THRUST = 4;
 const MAX_SPEED = 8;
 const LINEAR_DAMPING = 0;
@@ -261,18 +271,27 @@ if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
 }
 const overlaySecondaryButton = overlaySecondaryButtonElement;
 
-const touchButtons = [...document.querySelectorAll<HTMLButtonElement>("[data-input-key]")];
-const touchButtonsByKey = new Map<InputKey, HTMLButtonElement>();
-for (const button of touchButtons) {
-  const inputKey = button.dataset.inputKey;
-  if (inputKey === "up" || inputKey === "down" || inputKey === "left" || inputKey === "right") {
-    touchButtonsByKey.set(inputKey, button);
-  }
+const joystickElement = document.getElementById("joystick");
+if (!(joystickElement instanceof HTMLDivElement)) {
+  throw new Error("Joystick element not found");
 }
+const joystick = joystickElement;
+
+const joystickKnobElement = document.getElementById("joystick-knob");
+if (!(joystickKnobElement instanceof HTMLDivElement)) {
+  throw new Error("Joystick knob element not found");
+}
+const joystickKnob = joystickKnobElement;
 
 const game = createRuntime();
 let overlayMode: OverlayMode = null;
-const activeTouchInputs = new Map<number, InputKey>();
+const joystickState: JoystickState = {
+  pointerId: null,
+  originX: 0,
+  originY: 0,
+  dx: 0,
+  dy: 0,
+};
 const isTouchDevice = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
 
 function createRuntime(): Runtime {
@@ -326,23 +345,46 @@ function setDirectionalInput(inputKey: InputKey, isPressed: boolean): void {
   game.input[inputKey] = isPressed;
 }
 
-function isTouchInputHeld(inputKey: InputKey): boolean {
-  for (const activeInputKey of activeTouchInputs.values()) {
-    if (activeInputKey === inputKey) return true;
-  }
-
-  return false;
+function setJoystickPosition(x: number, y: number): void {
+  joystick.style.left = `${x}px`;
+  joystick.style.top = `${y}px`;
 }
 
-function syncTouchButtonState(): void {
-  for (const [inputKey, button] of touchButtonsByKey) {
-    button.classList.toggle("is-active", isTouchInputHeld(inputKey));
-  }
+function applyJoystickInput(dx: number, dy: number): void {
+  joystickState.dx = dx;
+  joystickState.dy = dy;
+
+  setDirectionalInput("left", dx < -JOYSTICK_DEADZONE);
+  setDirectionalInput("right", dx > JOYSTICK_DEADZONE);
+  setDirectionalInput("up", dy < -JOYSTICK_DEADZONE);
+  setDirectionalInput("down", dy > JOYSTICK_DEADZONE);
+}
+
+function resetJoystick(): void {
+  joystickState.pointerId = null;
+  joystickState.dx = 0;
+  joystickState.dy = 0;
+  joystick.classList.remove("visible");
+  joystick.setAttribute("aria-hidden", "true");
+  joystickKnob.style.transform = "translate(0px, 0px)";
+  clearInputState();
 }
 
 function clearActiveTouchInputs(): void {
-  activeTouchInputs.clear();
-  syncTouchButtonState();
+  resetJoystick();
+}
+
+function updateJoystick(pointerX: number, pointerY: number): void {
+  const rawDx = pointerX - joystickState.originX;
+  const rawDy = pointerY - joystickState.originY;
+  const distance = Math.hypot(rawDx, rawDy);
+  const limitedDistance = Math.min(distance, JOYSTICK_RADIUS);
+  const ratio = distance === 0 ? 0 : limitedDistance / distance;
+  const dx = rawDx * ratio;
+  const dy = rawDy * ratio;
+
+  joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  applyJoystickInput(dx, dy);
 }
 
 function createCanvasMetrics(): CanvasMetrics {
@@ -474,11 +516,11 @@ function showOnboardingOverlay(reason: "initial" | "restart"): void {
   overlayMode = "onboarding";
   overlayTitle.textContent = reason === "initial" ? "Приготовься" : "Новый забег";
   overlayMessage.textContent = isTouchDevice
-    ? "Управляй фигурой через экранный D-pad. Съедать можно только те фигуры, которые отличаются по всем трем свойствам."
+    ? "Коснись экрана и веди пальцем в нужную сторону. Съедать можно только те фигуры, которые отличаются по всем трем свойствам."
     : "Управляй фигурой через WASD или стрелки. Съедать можно только те фигуры, которые отличаются по всем трем свойствам.";
   setOverlayTips([
     isTouchDevice
-      ? "Удерживай одну или две кнопки D-pad, чтобы двигаться в сторону или по диагонали."
+      ? "Плавающий джойстик появляется под пальцем только во время касания и не занимает экран постоянно."
       : "Удерживай одну или две клавиши направления, чтобы двигаться в сторону или по диагонали.",
     "Пауза доступна в любой момент через кнопку справа сверху или по Escape на компьютере.",
     "Если у цели совпадает хотя бы одно свойство, забег сразу заканчивается.",
@@ -1427,42 +1469,46 @@ function togglePauseGame(): void {
   });
 
   function releaseTouchPointer(pointerId: number): void {
-    const inputKey = activeTouchInputs.get(pointerId);
-    if (!inputKey) return;
-
-    activeTouchInputs.delete(pointerId);
-    setDirectionalInput(inputKey, isTouchInputHeld(inputKey));
-    syncTouchButtonState();
+    if (joystickState.pointerId !== pointerId) return;
+    resetJoystick();
   }
 
-  for (const button of touchButtons) {
-    const inputKey = button.dataset.inputKey;
-    if (inputKey !== "up" && inputKey !== "down" && inputKey !== "left" && inputKey !== "right") continue;
+  canvas.addEventListener("pointerdown", (event) => {
+    if (!isTouchDevice || event.pointerType !== "touch" || game.state !== "playing") return;
+    if (joystickState.pointerId !== null) return;
 
-    button.addEventListener("pointerdown", (event) => {
-      if (game.state !== "playing") return;
+    event.preventDefault();
+    joystickState.pointerId = event.pointerId;
+    joystickState.originX = event.clientX;
+    joystickState.originY = event.clientY;
+    setJoystickPosition(event.clientX, event.clientY);
+    joystick.classList.add("visible");
+    joystick.setAttribute("aria-hidden", "false");
+    updateJoystick(event.clientX, event.clientY);
+    canvas.setPointerCapture(event.pointerId);
+  });
 
-      event.preventDefault();
-      activeTouchInputs.set(event.pointerId, inputKey);
-      setDirectionalInput(inputKey, true);
-      syncTouchButtonState();
-      button.setPointerCapture(event.pointerId);
-    });
+  canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== joystickState.pointerId) return;
+    event.preventDefault();
+    updateJoystick(event.clientX, event.clientY);
+  });
 
-    button.addEventListener("pointerup", (event) => {
-      event.preventDefault();
-      releaseTouchPointer(event.pointerId);
-    });
+  canvas.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== joystickState.pointerId) return;
+    event.preventDefault();
+    releaseTouchPointer(event.pointerId);
+  });
 
-    button.addEventListener("pointercancel", (event) => {
-      event.preventDefault();
-      releaseTouchPointer(event.pointerId);
-    });
+  canvas.addEventListener("pointercancel", (event) => {
+    if (event.pointerId !== joystickState.pointerId) return;
+    event.preventDefault();
+    releaseTouchPointer(event.pointerId);
+  });
 
-    button.addEventListener("lostpointercapture", (event) => {
-      releaseTouchPointer(event.pointerId);
-    });
-  }
+  canvas.addEventListener("lostpointercapture", (event) => {
+    releaseTouchPointer(event.pointerId);
+  });
 
   resizeCanvas();
   resetRuntime();
