@@ -18,8 +18,8 @@ type ColorName = "red" | "blue" | "green";
 type FillStyleName = "filled" | "outline" | "dashed";
 type InputKey = "up" | "down" | "left" | "right";
 type PhysicsBodyKind = "entity" | "wall";
-type GameState = "boot" | "playing" | "paused" | "gameOver";
-type OverlayMode = "onboarding" | "pause" | "gameOver" | null;
+type GameState = "boot" | "countdown" | "playing" | "paused" | "gameOver";
+type OverlayMode = "onboarding" | "countdown" | "pause" | "gameOver" | null;
 
 type EntityId = number;
 type PhysicsBodyId = number;
@@ -161,6 +161,7 @@ type Runtime = {
   nextEntityId: number;
   accumulator: number;
   lastFrameTime: number;
+  countdownRemaining: number;
   ecsWorld: ECSWorld<GameEntity>;
   queries: QuerySet;
   physicsAdapter: PhysicsAdapter | null;
@@ -172,6 +173,7 @@ type Runtime = {
 const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
+const START_COUNTDOWN_SECONDS = 3;
 const PLAYER_THRUST = 4;
 const MAX_SPEED = 8;
 const LINEAR_DAMPING = 0;
@@ -282,6 +284,7 @@ function createRuntime(): Runtime {
     nextEntityId: 1,
     accumulator: 0,
     lastFrameTime: 0,
+    countdownRemaining: 0,
     ecsWorld,
     queries: createQueries(ecsWorld),
     physicsAdapter: null,
@@ -501,6 +504,17 @@ function showPauseOverlay(autoPaused: boolean): void {
   overlay.setAttribute("aria-hidden", "false");
 }
 
+function showCountdownOverlay(): void {
+  overlayMode = "countdown";
+  overlayTitle.textContent = "Старт";
+  overlayMessage.textContent = `Начинаем через ${Math.ceil(game.countdownRemaining)}...`;
+  setOverlayTips(["Столкновения начнут работать сразу после окончания отсчета."]);
+  overlayPrimaryButton.textContent = "Подождать";
+  overlaySecondaryButton.hidden = true;
+  overlay.classList.add("visible");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
 function showGameOverOverlay(): void {
   overlayMode = "gameOver";
   overlayTitle.textContent = "Игра окончена";
@@ -543,8 +557,37 @@ function resumeGame(): void {
   updateHud();
 }
 
+function beginSoftStart(): void {
+  game.state = "countdown";
+  game.countdownRemaining = START_COUNTDOWN_SECONDS;
+  game.accumulator = 0;
+  game.lastFrameTime = performance.now();
+  clearInputState();
+  clearActiveTouchInputs();
+  showCountdownOverlay();
+  updateHud();
+}
+
+function updateCountdown(elapsed: number): void {
+  if (game.state !== "countdown") return;
+
+  game.countdownRemaining = Math.max(0, game.countdownRemaining - elapsed);
+
+  if (game.countdownRemaining === 0) {
+    hideOverlay();
+    game.state = "playing";
+    game.accumulator = 0;
+    game.lastFrameTime = performance.now();
+    updateHud();
+    return;
+  }
+
+  overlayMessage.textContent = `Начинаем через ${Math.ceil(game.countdownRemaining)}...`;
+}
+
 function startOnboarding(reason: "initial" | "restart"): void {
   game.state = "paused";
+  game.countdownRemaining = 0;
   game.accumulator = 0;
   game.lastFrameTime = performance.now();
   clearInputState();
@@ -1241,6 +1284,7 @@ function togglePauseGame(): void {
     createECSRuntime();
     game.score = 0;
     game.nextEntityId = 1;
+    game.countdownRemaining = 0;
     game.accumulator = 0;
     game.lastFrameTime = performance.now();
     game.state = "playing";
@@ -1267,8 +1311,7 @@ function togglePauseGame(): void {
       return;
     }
 
-    game.accumulator = FIXED_DT;
-    updateHud();
+    beginSoftStart();
   }
 
   const FIXED_TICK_SYSTEMS: Array<() => void> = [
@@ -1302,6 +1345,8 @@ function togglePauseGame(): void {
         fixedUpdate();
         game.accumulator -= FIXED_DT;
       }
+    } else if (game.state === "countdown") {
+      updateCountdown(elapsed);
     } else {
       game.accumulator = 0;
     }
@@ -1320,6 +1365,7 @@ function togglePauseGame(): void {
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
     if (key === PAUSE_KEY) {
+      if (game.state === "countdown") return;
       event.preventDefault();
       togglePauseGame();
       return;
@@ -1356,12 +1402,13 @@ function togglePauseGame(): void {
   });
 
   pauseButton.addEventListener("click", () => {
+    if (game.state === "countdown") return;
     togglePauseGame();
   });
 
   overlayPrimaryButton.addEventListener("click", () => {
     if (overlayMode === "onboarding") {
-      resumeGame();
+      beginSoftStart();
       return;
     }
 
