@@ -156,6 +156,8 @@ type DynamicBodySpec = {
   angularVelocity: number;
 };
 
+type ContactPassThroughPredicate = (bodyIdA: PhysicsBodyId, bodyIdB: PhysicsBodyId) => boolean;
+
 type PhysicsAdapter = {
   createWorld(bounds: Bounds): void;
   destroyWorld(): void;
@@ -165,6 +167,7 @@ type PhysicsAdapter = {
   setVelocity(bodyId: PhysicsBodyId, velocity: Vec2Value): void;
   getVelocity(bodyId: PhysicsBodyId): Vec2Value | null;
   setSpeedAlongDirection(bodyId: PhysicsBodyId, direction: Vec2Value, speed: number): void;
+  setContactPassThroughPredicate(predicate: ContactPassThroughPredicate | null): void;
   step(dt: number): void;
   readTransform(bodyId: PhysicsBodyId): Transform | null;
   resizeBounds(bounds: Bounds, dynamicBodies: PhysicsBodySnapshot[]): void;
@@ -184,6 +187,7 @@ type Runtime = {
   canvasMetrics: CanvasMetrics;
   gameplayProfile: GameplayProfile;
   queues: QueueState;
+  playerBoostExpiresAt: number;
 };
 
 type FullscreenDocument = Document & {
@@ -199,7 +203,12 @@ const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
 const MIN_POINTER_TARGET_DISTANCE = 10;
-const MAX_SPEED = 8;
+const MAX_SPEED = 2;
+const PLAYER_MAX_SPEED = 5;
+const PLAYER_BOOST_SPEED = 10;
+const PLAYER_BOOST_DURATION_MS = 350;
+const DOUBLE_TAP_WINDOW_MS = 300;
+const DOUBLE_TAP_RADIUS_PX = 40;
 const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0;
 const ENTITY_SIZE = 0.55;
@@ -321,6 +330,7 @@ function createRuntime(): Runtime {
     canvasMetrics,
     gameplayProfile: createGameplayProfile(canvasMetrics),
     queues: createQueues(),
+    playerBoostExpiresAt: 0,
   };
 }
 
@@ -478,6 +488,17 @@ function executePhysicsCommand(command: PhysicsCommand): void {
   }
 }
 
+function isPlayerBoostActive(): boolean {
+  return game.playerBoostExpiresAt > performance.now();
+}
+
+function getEntitySpeed(entity: PhysicsEntity): number {
+  if (entity.player) {
+    return isPlayerBoostActive() ? PLAYER_BOOST_SPEED : PLAYER_MAX_SPEED;
+  }
+  return MAX_SPEED;
+}
+
 function setEntityMovementDirection(entity: PhysicsEntity, direction: Vec2Value): void {
   const normalizedDirection = normalizeVector(direction);
   if (!normalizedDirection) return;
@@ -491,12 +512,13 @@ function setEntityVelocityAlongDirection(entity: PhysicsEntity, direction: Vec2V
   if (!normalizedDirection) return;
 
   entity.movementDirection = normalizedDirection;
+  const speed = getEntitySpeed(entity);
   executePhysicsCommand({
     type: "set-velocity",
     bodyId: entity.physics.bodyId,
     velocity: {
-      x: normalizedDirection.x * MAX_SPEED,
-      y: normalizedDirection.y * MAX_SPEED,
+      x: normalizedDirection.x * speed,
+      y: normalizedDirection.y * speed,
     },
   });
 }
@@ -807,6 +829,7 @@ function pauseGame(autoPaused = false): void {
   game.state = "paused";
   game.accumulator = 0;
   game.lastFrameTime = performance.now();
+  game.playerBoostExpiresAt = 0;
   clearInputState();
   clearActiveTouchInputs();
   showPauseOverlay(autoPaused);
@@ -851,6 +874,7 @@ function togglePauseGame(): void {
     let nextBodyId = 1;
     let wallBodyIds: PhysicsBodyId[] = [];
     let queuedContacts: Array<{ bodyIdA: PhysicsBodyId; bodyIdB: PhysicsBodyId }> = [];
+    let passThroughPredicate: ContactPassThroughPredicate | null = null;
     const bodies = new Map<PhysicsBodyId, Body>();
 
     function createShapeGeometry(shape: Shape, size: number): PhysicsShape {
@@ -940,6 +964,16 @@ function togglePauseGame(): void {
           queuedContacts.push({ bodyIdA, bodyIdB });
         });
 
+        nextWorld.on("pre-solve", (contact: Contact) => {
+          if (!passThroughPredicate) return;
+          const bodyIdA = (contact.getFixtureA().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
+          const bodyIdB = (contact.getFixtureB().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
+          if (bodyIdA === null || bodyIdB === null) return;
+          if (passThroughPredicate(bodyIdA, bodyIdB)) {
+            contact.setEnabled(false);
+          }
+        });
+
         createWalls(bounds);
       },
 
@@ -1016,6 +1050,10 @@ function togglePauseGame(): void {
         if (!body || !normalizedDirection) return;
 
         body.setLinearVelocity(Vec2(normalizedDirection.x * speed, normalizedDirection.y * speed));
+      },
+
+      setContactPassThroughPredicate(predicate) {
+        passThroughPredicate = predicate;
       },
 
       step(dt) {
@@ -1185,8 +1223,8 @@ function togglePauseGame(): void {
       shape: nextAppearance.shape,
       size: nextAppearance.size,
       velocity: {
-        x: initialDirection.x * MAX_SPEED,
-        y: initialDirection.y * MAX_SPEED,
+        x: initialDirection.x * (isPlayer ? PLAYER_MAX_SPEED : MAX_SPEED),
+        y: initialDirection.y * (isPlayer ? PLAYER_MAX_SPEED : MAX_SPEED),
       },
       angularVelocity: randomRange(-1.4, 1.4),
     });
@@ -1222,15 +1260,16 @@ function togglePauseGame(): void {
       const velocity = game.physicsAdapter?.getVelocity(entity.physics.bodyId) ?? null;
       if (!velocity) continue;
 
+      const speed = getEntitySpeed(entity);
       const normalizedVelocity = normalizeVector(velocity);
       if (normalizedVelocity) {
         // After collisions we keep the rebound heading, then restore the fixed speed magnitude.
         setEntityMovementDirection(entity, normalizedVelocity);
-        game.physicsAdapter?.setSpeedAlongDirection(entity.physics.bodyId, normalizedVelocity, MAX_SPEED);
+        game.physicsAdapter?.setSpeedAlongDirection(entity.physics.bodyId, normalizedVelocity, speed);
         continue;
       }
 
-      game.physicsAdapter?.setSpeedAlongDirection(entity.physics.bodyId, entity.movementDirection, MAX_SPEED);
+      game.physicsAdapter?.setSpeedAlongDirection(entity.physics.bodyId, entity.movementDirection, speed);
     }
   }
 
@@ -1423,13 +1462,13 @@ function togglePauseGame(): void {
     ctx.restore();
   }
 
-  function drawPlayerMarker(radiusPx: number): void {
+  function drawPlayerMarker(): void {
     ctx.save();
     ctx.fillStyle = "#ffffff";
     ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, -radiusPx - 9, 5, 0, Math.PI * 2);
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -1461,7 +1500,7 @@ function togglePauseGame(): void {
     ctx.setLineDash([]);
 
     if (entity.player) {
-      drawPlayerMarker(entity.appearance.size * SCALE);
+      drawPlayerMarker();
     }
 
     ctx.restore();
@@ -1519,6 +1558,21 @@ function togglePauseGame(): void {
     game.physicsAdapter?.destroyWorld();
     game.physicsAdapter = createPhysicsAdapter();
     game.physicsAdapter.createWorld(getWorldBounds());
+    game.physicsAdapter.setContactPassThroughPredicate((bodyIdA, bodyIdB) => {
+      const player = getPlayerEntity();
+      if (!player) return false;
+      const playerBodyId = player.physics.bodyId;
+      const otherBodyId =
+        bodyIdA === playerBodyId ? bodyIdB : bodyIdB === playerBodyId ? bodyIdA : null;
+      if (otherBodyId === null) return false;
+
+      for (const target of game.queries.targets) {
+        if (target.physics.bodyId === otherBodyId) {
+          return areAllPropertiesDifferent(player.appearance, target.appearance);
+        }
+      }
+      return false;
+    });
     createECSRuntime();
     game.score = 0;
     game.nextEntityId = 1;
@@ -1526,6 +1580,7 @@ function togglePauseGame(): void {
     game.lastFrameTime = performance.now();
     game.state = "playing";
     game.queues = createQueues();
+    game.playerBoostExpiresAt = 0;
     clearInputState();
     clearActiveTouchInputs();
     hideOverlay();
@@ -1679,6 +1734,10 @@ function togglePauseGame(): void {
     restartGame();
   });
 
+  let lastPointerDownTime = 0;
+  let lastPointerDownX = 0;
+  let lastPointerDownY = 0;
+
   canvas.addEventListener("pointerdown", (event) => {
     retryFullscreenOnUserGesture();
     if (game.state !== "playing") return;
@@ -1686,6 +1745,22 @@ function togglePauseGame(): void {
     if (event.pointerType === "mouse" && event.button !== 0) return;
 
     event.preventDefault();
+
+    const now = event.timeStamp || performance.now();
+    const elapsed = now - lastPointerDownTime;
+    const isDoubleTap =
+      elapsed > 0 &&
+      elapsed < DOUBLE_TAP_WINDOW_MS &&
+      Math.abs(event.clientX - lastPointerDownX) < DOUBLE_TAP_RADIUS_PX &&
+      Math.abs(event.clientY - lastPointerDownY) < DOUBLE_TAP_RADIUS_PX;
+    lastPointerDownTime = now;
+    lastPointerDownX = event.clientX;
+    lastPointerDownY = event.clientY;
+
+    if (isDoubleTap) {
+      game.playerBoostExpiresAt = performance.now() + PLAYER_BOOST_DURATION_MS;
+    }
+
     setPointerDirection(event.clientX, event.clientY);
   });
 
