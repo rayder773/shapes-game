@@ -222,39 +222,6 @@
         display: none;
       }
 
-      .joystick {
-        position: fixed;
-        z-index: 3;
-        display: none;
-        width: 96px;
-        height: 96px;
-        margin-left: -48px;
-        margin-top: -48px;
-        border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(10, 15, 24, 0.18);
-        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-        backdrop-filter: blur(8px);
-        touch-action: none;
-      }
-
-      .joystick.visible {
-        display: block;
-      }
-
-      .joystick-knob {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 44px;
-        height: 44px;
-        margin-left: -22px;
-        margin-top: -22px;
-        border-radius: 50%;
-        background: rgba(255, 209, 102, 0.72);
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-      }
-
       @media (max-width: 720px) {
         .hud {
           gap: 12px;
@@ -299,13 +266,6 @@
           border-radius: 14px;
           box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
         }
-
-        .joystick {
-          width: 88px;
-          height: 88px;
-          margin-left: -44px;
-          margin-top: -44px;
-        }
       }
 
       @media (orientation: landscape) and (max-height: 520px) {
@@ -326,20 +286,6 @@
           min-width: 40px;
           min-height: 40px;
           padding: 0 10px;
-        }
-
-        .joystick {
-          width: 74px;
-          height: 74px;
-          margin-left: -37px;
-          margin-top: -37px;
-        }
-
-        .joystick-knob {
-          width: 34px;
-          height: 34px;
-          margin-left: -17px;
-          margin-top: -17px;
         }
       }
     </style>
@@ -365,10 +311,6 @@
           <button id="overlay-secondary-button" class="secondary" type="button" hidden>Начать заново</button>
         </div>
       </div>
-    </div>
-
-    <div id="joystick" class="joystick" aria-hidden="true">
-      <div id="joystick-knob" class="joystick-knob"></div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

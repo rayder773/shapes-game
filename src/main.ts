@@ -42,22 +42,23 @@ type PhysicsComponent = {
   radius: number;
 };
 
+type MovementDirection = {
+  x: number;
+  y: number;
+};
+
 type GameEntity = {
   id: EntityId;
   transform?: Transform;
   appearance?: Appearance;
   physics?: PhysicsComponent;
+  movementDirection?: MovementDirection;
   renderable?: true;
   player?: true;
   target?: true;
 };
 
 type InputSnapshot = Record<InputKey, boolean>;
-
-type AnalogInput = {
-  x: number;
-  y: number;
-};
 
 type CanvasMetrics = {
   dpr: number;
@@ -74,15 +75,12 @@ type GameplayProfile = {
   maxTargets: number;
   spawnPadding: number;
   safeSpawnPadding: number;
-  targetSpeedRange: number;
-  joystickRadius: number;
-  joystickDeadzone: number;
 };
 
 type PhysicsCommand = {
-  type: "apply-force" | "apply-impulse";
+  type: "set-velocity";
   bodyId: PhysicsBodyId;
-  force: Vec2Value;
+  velocity: Vec2Value;
 };
 
 type GameplayCommand =
@@ -113,12 +111,12 @@ type QueueState = {
   collisionEvents: CollisionEvent[];
 };
 
-type PlayerEntity = With<GameEntity, "player" | "transform" | "appearance" | "physics">;
-type TargetEntity = With<GameEntity, "target" | "transform" | "appearance" | "physics">;
-type PhysicsEntity = With<GameEntity, "transform" | "physics">;
+type PlayerEntity = With<GameEntity, "player" | "transform" | "appearance" | "physics" | "movementDirection">;
+type TargetEntity = With<GameEntity, "target" | "transform" | "appearance" | "physics" | "movementDirection">;
+type PhysicsEntity = With<GameEntity, "transform" | "physics" | "movementDirection">;
 type RenderableEntity = With<GameEntity, "transform" | "appearance" | "renderable">;
-type AppearancePhysicsEntity = With<GameEntity, "appearance" | "physics">;
-type InteractiveEntity = With<GameEntity, "transform" | "appearance" | "physics">;
+type AppearancePhysicsEntity = With<GameEntity, "appearance" | "physics" | "movementDirection">;
+type InteractiveEntity = With<GameEntity, "transform" | "appearance" | "physics" | "movementDirection">;
 
 type QuerySet = {
   players: Query<PlayerEntity>;
@@ -164,10 +162,10 @@ type PhysicsAdapter = {
   createDynamicBody(spec: DynamicBodySpec): PhysicsBodyId;
   destroyBody(bodyId: PhysicsBodyId): void;
   setShape(bodyId: PhysicsBodyId, shapeSpec: { shape: Shape; size: number }): void;
-  applyForce(bodyId: PhysicsBodyId, force: Vec2Value): void;
-  applyImpulse(bodyId: PhysicsBodyId, impulse: Vec2Value): void;
+  setVelocity(bodyId: PhysicsBodyId, velocity: Vec2Value): void;
+  getVelocity(bodyId: PhysicsBodyId): Vec2Value | null;
+  setSpeedAlongDirection(bodyId: PhysicsBodyId, direction: Vec2Value, speed: number): void;
   step(dt: number): void;
-  clampSpeed(bodyId: PhysicsBodyId, maxSpeed: number): void;
   readTransform(bodyId: PhysicsBodyId): Transform | null;
   resizeBounds(bounds: Bounds, dynamicBodies: PhysicsBodySnapshot[]): void;
   drainCollisionEvents(): Array<{ bodyIdA: PhysicsBodyId; bodyIdB: PhysicsBodyId }>;
@@ -183,19 +181,9 @@ type Runtime = {
   queries: QuerySet;
   physicsAdapter: PhysicsAdapter | null;
   input: InputSnapshot;
-  analogInput: AnalogInput;
   canvasMetrics: CanvasMetrics;
   gameplayProfile: GameplayProfile;
   queues: QueueState;
-};
-
-type JoystickState = {
-  pointerId: number | null;
-  originX: number;
-  originY: number;
-  dx: number;
-  dy: number;
-  moved: boolean;
 };
 
 type FullscreenDocument = Document & {
@@ -210,17 +198,15 @@ type FullscreenElement = HTMLElement & {
 const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
-const PLAYER_THRUST = 5.25;
-const PLAYER_TAP_IMPULSE = 3.5;
 const MIN_POINTER_TARGET_DISTANCE = 10;
-const TOUCH_TAP_MOVE_THRESHOLD = 14;
 const MAX_SPEED = 8;
 const LINEAR_DAMPING = 0;
-const ANGULAR_DAMPING = 0.15;
+const ANGULAR_DAMPING = 0;
 const ENTITY_SIZE = 0.55;
 const WALL_THICKNESS = 0.35;
 const MAX_SPAWN_ATTEMPTS = 80;
 const COMPACT_TOUCH_BREAKPOINT = 820;
+const MIN_DIRECTION_LENGTH = 0.0001;
 const SHAPES: Shape[] = ["circle", "square", "triangle"];
 const COLORS: ColorName[] = ["red", "blue", "green"];
 const FILL_STYLES: FillStyleName[] = ["filled", "outline", "dashed"];
@@ -233,7 +219,7 @@ const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "
 const PAUSE_KEY = "escape";
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
 const GAME_RULES = [
-  "На телефоне удерживай джойстик, на компьютере кликай по области для толчка.",
+  "Клик, тап или клавиши мгновенно меняют направление, скорость всегда остается постоянной.",
   "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
   "Если совпадает хотя бы одно свойство, забег сразу заканчивается.",
 ];
@@ -307,18 +293,6 @@ if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
   throw new Error("Overlay secondary button element not found");
 }
 const overlaySecondaryButton = overlaySecondaryButtonElement;
-
-const joystickElement = document.getElementById("joystick");
-if (!(joystickElement instanceof HTMLDivElement)) {
-  throw new Error("Joystick element not found");
-}
-const joystick = joystickElement;
-
-const joystickKnobElement = document.getElementById("joystick-knob");
-if (!(joystickKnobElement instanceof HTMLDivElement)) {
-  throw new Error("Joystick knob element not found");
-}
-const joystickKnob = joystickKnobElement;
 const rootStyle = document.documentElement.style;
 
 function detectTouchDevice(): boolean {
@@ -329,14 +303,6 @@ const isTouchDevice = detectTouchDevice();
 const game = createRuntime();
 let overlayMode: OverlayMode = null;
 let shouldRetryFullscreen = true;
-const joystickState: JoystickState = {
-  pointerId: null,
-  originX: 0,
-  originY: 0,
-  dx: 0,
-  dy: 0,
-  moved: false,
-};
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
@@ -352,7 +318,6 @@ function createRuntime(): Runtime {
     queries: createQueries(ecsWorld),
     physicsAdapter: null,
     input: createInputSnapshot(),
-    analogInput: createAnalogInput(),
     canvasMetrics,
     gameplayProfile: createGameplayProfile(canvasMetrics),
     queues: createQueues(),
@@ -361,9 +326,9 @@ function createRuntime(): Runtime {
 
 function createQueries(ecsWorld: ECSWorld<GameEntity>): QuerySet {
   return {
-    players: ecsWorld.with("player", "transform", "appearance", "physics"),
-    targets: ecsWorld.with("target", "transform", "appearance", "physics"),
-    physicsBodies: ecsWorld.with("transform", "physics"),
+    players: ecsWorld.with("player", "transform", "appearance", "physics", "movementDirection"),
+    targets: ecsWorld.with("target", "transform", "appearance", "physics", "movementDirection"),
+    physicsBodies: ecsWorld.with("transform", "physics", "movementDirection"),
     renderables: ecsWorld.with("transform", "appearance", "renderable"),
   };
 }
@@ -374,13 +339,6 @@ function createInputSnapshot(): InputSnapshot {
     down: false,
     left: false,
     right: false,
-  };
-}
-
-function createAnalogInput(): AnalogInput {
-  return {
-    x: 0,
-    y: 0,
   };
 }
 
@@ -395,9 +353,6 @@ function createGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
       maxTargets: 12,
       spawnPadding: 2.25,
       safeSpawnPadding: 3.1,
-      targetSpeedRange: 2.4,
-      joystickRadius: 44,
-      joystickDeadzone: 8,
     };
   }
 
@@ -408,9 +363,6 @@ function createGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
     maxTargets: 20,
     spawnPadding: 1.8,
     safeSpawnPadding: 2.3,
-    targetSpeedRange: 3.5,
-    joystickRadius: 36,
-    joystickDeadzone: 10,
   };
 }
 
@@ -459,63 +411,7 @@ function setDirectionalInput(inputKey: InputKey, isPressed: boolean): void {
   game.input[inputKey] = isPressed;
 }
 
-function setJoystickPosition(x: number, y: number): void {
-  joystick.style.left = `${x}px`;
-  joystick.style.top = `${y}px`;
-}
-
-function applyJoystickInput(dx: number, dy: number): void {
-  joystickState.dx = dx;
-  joystickState.dy = dy;
-  game.analogInput.x = dx;
-  game.analogInput.y = dy;
-}
-
-function resetJoystick(): void {
-  joystickState.pointerId = null;
-  joystickState.dx = 0;
-  joystickState.dy = 0;
-  joystickState.moved = false;
-  game.analogInput.x = 0;
-  game.analogInput.y = 0;
-  joystick.classList.remove("visible");
-  joystick.setAttribute("aria-hidden", "true");
-  joystickKnob.style.transform = "translate(0px, 0px)";
-}
-
 function clearActiveTouchInputs(): void {
-  resetJoystick();
-}
-
-function updateJoystick(pointerX: number, pointerY: number): void {
-  const rawDx = pointerX - joystickState.originX;
-  const rawDy = pointerY - joystickState.originY;
-  const distance = Math.hypot(rawDx, rawDy);
-  if (distance >= TOUCH_TAP_MOVE_THRESHOLD) {
-    joystickState.moved = true;
-  }
-  const joystickRadius = getGameplayProfile().joystickRadius;
-  const limitedDistance = Math.min(distance, joystickRadius);
-  const ratio = distance === 0 ? 0 : limitedDistance / distance;
-  const dx = rawDx * ratio;
-  const dy = rawDy * ratio;
-  const normalizedX = joystickRadius === 0 ? 0 : dx / joystickRadius;
-  const normalizedY = joystickRadius === 0 ? 0 : dy / joystickRadius;
-  const deadzoneRatio = joystickRadius === 0 ? 0 : getGameplayProfile().joystickDeadzone / joystickRadius;
-  const magnitude = Math.hypot(normalizedX, normalizedY);
-
-  if (magnitude <= deadzoneRatio) {
-    joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-    applyJoystickInput(0, 0);
-    return;
-  }
-
-  const easedMagnitude = clamp((magnitude - deadzoneRatio) / (1 - deadzoneRatio), 0, 1);
-  const directionX = magnitude === 0 ? 0 : normalizedX / magnitude;
-  const directionY = magnitude === 0 ? 0 : normalizedY / magnitude;
-
-  joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-  applyJoystickInput(directionX * easedMagnitude, directionY * easedMagnitude);
 }
 
 function createCanvasMetrics(): CanvasMetrics {
@@ -558,7 +454,72 @@ function syncViewportCssVars(widthCss: number, heightCss: number): void {
   rootStyle.setProperty("--app-height", `${heightCss}px`);
 }
 
-function applyPointerImpulse(pointerX: number, pointerY: number): void {
+function normalizeVector(vector: Vec2Value): MovementDirection | null {
+  const length = Math.hypot(vector.x, vector.y);
+  if (length < MIN_DIRECTION_LENGTH) return null;
+
+  return {
+    x: vector.x / length,
+    y: vector.y / length,
+  };
+}
+
+function getRandomDirection(): MovementDirection {
+  const angle = randomRange(0, Math.PI * 2);
+  return {
+    x: Math.cos(angle),
+    y: Math.sin(angle),
+  };
+}
+
+function executePhysicsCommand(command: PhysicsCommand): void {
+  if (command.type === "set-velocity") {
+    game.physicsAdapter?.setVelocity(command.bodyId, command.velocity);
+  }
+}
+
+function setEntityMovementDirection(entity: PhysicsEntity, direction: Vec2Value): void {
+  const normalizedDirection = normalizeVector(direction);
+  if (!normalizedDirection) return;
+
+  entity.movementDirection = normalizedDirection;
+}
+
+// Direct velocity assignment provides instant steering by overwriting accumulated momentum.
+function setEntityVelocityAlongDirection(entity: PhysicsEntity, direction: Vec2Value): void {
+  const normalizedDirection = normalizeVector(direction);
+  if (!normalizedDirection) return;
+
+  entity.movementDirection = normalizedDirection;
+  executePhysicsCommand({
+    type: "set-velocity",
+    bodyId: entity.physics.bodyId,
+    velocity: {
+      x: normalizedDirection.x * MAX_SPEED,
+      y: normalizedDirection.y * MAX_SPEED,
+    },
+  });
+}
+
+function getKeyboardDirection(): MovementDirection | null {
+  const x = (game.input.right ? 1 : 0) - (game.input.left ? 1 : 0);
+  const y = (game.input.up ? 1 : 0) - (game.input.down ? 1 : 0);
+  return normalizeVector({ x, y });
+}
+
+function refreshPlayerDirectionFromKeyboard(): void {
+  if (game.state !== "playing") return;
+
+  const player = getPlayerEntity();
+  if (!player) return;
+
+  const direction = getKeyboardDirection();
+  if (!direction) return;
+
+  setEntityVelocityAlongDirection(player, direction);
+}
+
+function setPointerDirection(pointerX: number, pointerY: number): void {
   if (game.state !== "playing") return;
 
   const player = getPlayerEntity();
@@ -570,15 +531,9 @@ function applyPointerImpulse(pointerX: number, pointerY: number): void {
   const distance = Math.hypot(deltaX, deltaY);
   if (distance < MIN_POINTER_TARGET_DISTANCE) return;
 
-  const normalizedX = deltaX / distance;
-  const normalizedY = -deltaY / distance;
-  game.queues.physics.push({
-    type: "apply-impulse",
-    bodyId: player.physics.bodyId,
-    force: {
-      x: normalizedX * PLAYER_TAP_IMPULSE,
-      y: normalizedY * PLAYER_TAP_IMPULSE,
-    },
+  setEntityVelocityAlongDirection(player, {
+    x: deltaX / distance,
+    y: -deltaY / distance,
   });
 }
 
@@ -778,8 +733,6 @@ function clearInputState(): void {
   setDirectionalInput("down", false);
   setDirectionalInput("left", false);
   setDirectionalInput("right", false);
-  game.analogInput.x = 0;
-  game.analogInput.y = 0;
 }
 
 function setOverlayTips(items: string[]): void {
@@ -1043,31 +996,30 @@ function togglePauseGame(): void {
         body.resetMassData();
       },
 
-      applyForce(bodyId, force) {
+      setVelocity(bodyId, velocity) {
         const body = bodies.get(bodyId);
         if (!body) return;
-        body.applyForceToCenter(Vec2(force.x, force.y), true);
+        body.setLinearVelocity(Vec2(velocity.x, velocity.y));
       },
 
-      applyImpulse(bodyId, impulse) {
+      getVelocity(bodyId) {
         const body = bodies.get(bodyId);
-        if (!body) return;
-        body.applyLinearImpulse(Vec2(impulse.x, impulse.y), body.getWorldCenter(), true);
+        if (!body) return null;
+
+        const velocity = body.getLinearVelocity();
+        return { x: velocity.x, y: velocity.y };
+      },
+
+      setSpeedAlongDirection(bodyId, direction, speed) {
+        const body = bodies.get(bodyId);
+        const normalizedDirection = normalizeVector(direction);
+        if (!body || !normalizedDirection) return;
+
+        body.setLinearVelocity(Vec2(normalizedDirection.x * speed, normalizedDirection.y * speed));
       },
 
       step(dt) {
         world?.step(dt);
-      },
-
-      clampSpeed(bodyId, maxSpeed) {
-        const body = bodies.get(bodyId);
-        if (!body) return;
-
-        const velocity = body.getLinearVelocity();
-        const speed = velocity.length();
-        if (speed <= maxSpeed) return;
-
-        body.setLinearVelocity(Vec2((velocity.x / speed) * maxSpeed, (velocity.y / speed) * maxSpeed));
       },
 
       readTransform(bodyId) {
@@ -1132,7 +1084,7 @@ function togglePauseGame(): void {
   }
 
   function getEntityById(entityId: EntityId): InteractiveEntity | null {
-    for (const entity of game.ecsWorld.with("transform", "appearance", "physics")) {
+    for (const entity of game.ecsWorld.with("transform", "appearance", "physics", "movementDirection")) {
       if (entity.id === entityId) return entity;
     }
 
@@ -1189,16 +1141,15 @@ function togglePauseGame(): void {
     appearance?: Appearance | null;
     safeForAppearance?: Appearance | null;
     spawnPadding?: number;
-    speedRange?: number;
   }): GameEntity {
     const isPlayer = options.isPlayer ?? false;
     const profile = getGameplayProfile();
     const spawnPadding = options.spawnPadding ?? profile.spawnPadding;
-    const speedRange = options.speedRange ?? profile.targetSpeedRange;
     const nextAppearance: Appearance = options.appearance ?? {
       ...createEntityProperties(options.safeForAppearance ?? null),
       size: ENTITY_SIZE,
     };
+    const initialDirection = getRandomDirection();
 
     const entity: InteractiveEntity & ({ player: true } | { target: true }) = {
       id: game.nextEntityId++,
@@ -1208,6 +1159,7 @@ function togglePauseGame(): void {
         bodyId: -1,
         radius: getShapeRadius(nextAppearance.shape, nextAppearance.size),
       },
+      movementDirection: initialDirection,
       renderable: true,
       ...(isPlayer ? { player: true } : { target: true }),
     };
@@ -1233,8 +1185,8 @@ function togglePauseGame(): void {
       shape: nextAppearance.shape,
       size: nextAppearance.size,
       velocity: {
-        x: isPlayer ? 0 : randomRange(-speedRange, speedRange),
-        y: isPlayer ? 0 : randomRange(-speedRange, speedRange),
+        x: initialDirection.x * MAX_SPEED,
+        y: initialDirection.y * MAX_SPEED,
       },
       angularVelocity: randomRange(-1.4, 1.4),
     });
@@ -1243,7 +1195,6 @@ function togglePauseGame(): void {
     entity.transform.x = spawn.x;
     entity.transform.y = spawn.y;
     game.ecsWorld.add(entity);
-    adapter.clampSpeed(bodyId, MAX_SPEED);
     return entity;
   }
 
@@ -1252,47 +1203,12 @@ function togglePauseGame(): void {
     game.ecsWorld.remove(entity);
   }
 
-  function InputIntentSystem(): void {
-    if (game.state !== "playing") return;
-
-    const player = getPlayerEntity();
-    if (!player) return;
-
-    let forceX = 0;
-    let forceY = 0;
-
-    if (joystickState.pointerId !== null) {
-      forceX = game.analogInput.x * PLAYER_THRUST;
-      forceY = -game.analogInput.y * PLAYER_THRUST;
-    } else {
-      if (game.input.up) forceY += PLAYER_THRUST;
-      if (game.input.down) forceY -= PLAYER_THRUST;
-      if (game.input.left) forceX -= PLAYER_THRUST;
-      if (game.input.right) forceX += PLAYER_THRUST;
-    }
-
-    if (forceX === 0 && forceY === 0) return;
-
-    game.queues.physics.push({
-      type: "apply-force",
-      bodyId: player.physics.bodyId,
-      force: { x: forceX, y: forceY },
-    });
-  }
-
   function PhysicsCommandSystem(): void {
     while (game.queues.physics.length > 0) {
       const command = game.queues.physics.shift();
       if (!command) continue;
 
-      if (command.type === "apply-force") {
-        game.physicsAdapter?.applyForce(command.bodyId, command.force);
-        continue;
-      }
-
-      if (command.type === "apply-impulse") {
-        game.physicsAdapter?.applyImpulse(command.bodyId, command.force);
-      }
+      executePhysicsCommand(command);
     }
   }
 
@@ -1301,9 +1217,20 @@ function togglePauseGame(): void {
     game.physicsAdapter?.step(FIXED_DT);
   }
 
-  function MotionConstraintSystem(): void {
+  function VelocityNormalizationSystem(): void {
     for (const entity of game.queries.physicsBodies) {
-      game.physicsAdapter?.clampSpeed(entity.physics.bodyId, MAX_SPEED);
+      const velocity = game.physicsAdapter?.getVelocity(entity.physics.bodyId) ?? null;
+      if (!velocity) continue;
+
+      const normalizedVelocity = normalizeVector(velocity);
+      if (normalizedVelocity) {
+        // After collisions we keep the rebound heading, then restore the fixed speed magnitude.
+        setEntityMovementDirection(entity, normalizedVelocity);
+        game.physicsAdapter?.setSpeedAlongDirection(entity.physics.bodyId, normalizedVelocity, MAX_SPEED);
+        continue;
+      }
+
+      game.physicsAdapter?.setSpeedAlongDirection(entity.physics.bodyId, entity.movementDirection, MAX_SPEED);
     }
   }
 
@@ -1624,10 +1551,9 @@ function togglePauseGame(): void {
   }
 
   const FIXED_TICK_SYSTEMS: Array<() => void> = [
-    InputIntentSystem,
     PhysicsCommandSystem,
     PhysicsStepSystem,
-    MotionConstraintSystem,
+    VelocityNormalizationSystem,
     TransformSyncSystem,
     CollisionCollectSystem,
     RuleResolutionSystem,
@@ -1680,6 +1606,7 @@ function togglePauseGame(): void {
     if (!DIRECTIONAL_KEYS.has(key) || game.state !== "playing") return;
     event.preventDefault();
     setInputKey(key, true);
+    refreshPlayerDirectionFromKeyboard();
   });
 
   window.addEventListener("keyup", (event) => {
@@ -1687,6 +1614,7 @@ function togglePauseGame(): void {
     if (!DIRECTIONAL_KEYS.has(key)) return;
     event.preventDefault();
     setInputKey(key, false);
+    refreshPlayerDirectionFromKeyboard();
   });
 
   window.addEventListener("blur", () => {
@@ -1751,57 +1679,14 @@ function togglePauseGame(): void {
     restartGame();
   });
 
-  function releaseTouchPointer(pointerId: number): void {
-    if (joystickState.pointerId !== pointerId) return;
-    resetJoystick();
-  }
-
   canvas.addEventListener("pointerdown", (event) => {
     retryFullscreenOnUserGesture();
     if (game.state !== "playing") return;
 
-    if (event.pointerType === "touch") {
-      if (joystickState.pointerId !== null) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
 
-      event.preventDefault();
-      joystickState.pointerId = event.pointerId;
-      joystickState.originX = event.clientX;
-      joystickState.originY = event.clientY;
-      joystickState.moved = false;
-      setJoystickPosition(event.clientX, event.clientY);
-      joystick.classList.add("visible");
-      joystick.setAttribute("aria-hidden", "false");
-      updateJoystick(event.clientX, event.clientY);
-      canvas.setPointerCapture(event.pointerId);
-      return;
-    }
-
-    applyPointerImpulse(event.clientX, event.clientY);
-  });
-
-  canvas.addEventListener("pointermove", (event) => {
-    if (event.pointerId !== joystickState.pointerId) return;
     event.preventDefault();
-    updateJoystick(event.clientX, event.clientY);
-  });
-
-  canvas.addEventListener("pointerup", (event) => {
-    if (event.pointerId !== joystickState.pointerId) return;
-    event.preventDefault();
-    if (!joystickState.moved) {
-      applyPointerImpulse(event.clientX, event.clientY);
-    }
-    releaseTouchPointer(event.pointerId);
-  });
-
-  canvas.addEventListener("pointercancel", (event) => {
-    if (event.pointerId !== joystickState.pointerId) return;
-    event.preventDefault();
-    releaseTouchPointer(event.pointerId);
-  });
-
-  canvas.addEventListener("lostpointercapture", (event) => {
-    releaseTouchPointer(event.pointerId);
+    setPointerDirection(event.clientX, event.clientY);
   });
 
   installBrowserInteractionGuards();
