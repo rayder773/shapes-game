@@ -34,6 +34,11 @@ export type PwaInstallOverlayModel = {
   secondaryLabel: string | null;
 };
 
+export type PwaInlineInstallPrompt = {
+  buttonLabel: string;
+  message: string;
+};
+
 export type PwaOverlayViewModel = {
   layout: "modal" | "sheet";
   variant: "default" | "ios-hint";
@@ -53,7 +58,7 @@ export type PwaController = {
   initialize(): void;
   setGameRouteActive(active: boolean): void;
   getPauseInstallButtonState(): { visible: boolean; label: string };
-  maybeGetAutoGameOverOverlay(): PwaInstallOverlayModel | null;
+  consumeGameOverInstallPrompt(): PwaInlineInstallPrompt | null;
   openInstallFlow(surface: "pause" | "postGameOver"): Promise<PwaActionResult>;
   confirmOverlay(): Promise<PwaActionResult>;
   dismissOverlay(): PwaActionResult;
@@ -204,6 +209,20 @@ export function createPwaController(): PwaController {
     };
   }
 
+  function createInlineInstallPrompt(variant: InstallOverlayVariant): PwaInlineInstallPrompt {
+    if (variant === "iosHint") {
+      return {
+        buttonLabel: "Как установить",
+        message: "Можно добавить игру на экран Домой и запускать ее как приложение.",
+      };
+    }
+
+    return {
+      buttonLabel: "Установить",
+      message: "Можно установить игру и возвращаться в следующий матч одним тапом.",
+    };
+  }
+
   async function runInstallPrompt(surface: InstallSurface): Promise<PwaActionResult> {
     const installPromptEvent = pendingInstallPromptEvent;
     if (!installPromptEvent) {
@@ -267,7 +286,7 @@ export function createPwaController(): PwaController {
       };
     },
 
-    maybeGetAutoGameOverOverlay(): PwaInstallOverlayModel | null {
+    consumeGameOverInstallPrompt(): PwaInlineInstallPrompt | null {
       const canPresentInstallFlow = pendingInstallPromptEvent !== null || isIphoneSafari();
 
       if (
@@ -281,9 +300,7 @@ export function createPwaController(): PwaController {
       }
 
       installPromoState.hasSeenInstallAutoPrompt = true;
-      const overlay = createOverlayModel(pendingInstallPromptEvent ? "prompt" : "iosHint", "postGameOver");
-      installPromoState.activeOverlay = overlay;
-      return overlay;
+      return createInlineInstallPrompt(pendingInstallPromptEvent ? "prompt" : "iosHint");
     },
 
     async openInstallFlow(surface: "pause" | "postGameOver"): Promise<PwaActionResult> {
