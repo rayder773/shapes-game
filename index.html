@@ -6,7 +6,13 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <title>Zero-G Shapes</title>
+    <title>AntiMatch</title>
+    <meta name="theme-color" content="#09111d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="icon" href="%BASE_URL%favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="%BASE_URL%favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32x32.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
     <style>
       :root {
         color-scheme: dark;
@@ -156,6 +162,17 @@
         pointer-events: auto;
       }
 
+      .overlay[data-layout="sheet"] {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding:
+          calc(var(--safe-top) + 16px)
+          calc(var(--safe-right) + 16px)
+          calc(var(--safe-bottom) + 10px)
+          calc(var(--safe-left) + 16px);
+      }
+
       .modal {
         width: min(100%, 380px);
         margin-inline: auto;
@@ -166,6 +183,24 @@
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
         text-align: center;
         touch-action: manipulation;
+      }
+
+      .overlay[data-layout="sheet"] .modal {
+        width: min(100%, 460px);
+        border-radius: 26px 26px 18px 18px;
+        padding: 24px 22px 20px;
+        text-align: left;
+        animation: install-sheet-in 180ms ease;
+      }
+
+      .overlay[data-variant="ios-hint"] .modal,
+      .overlay[data-variant="ios-hint"] .modal p {
+        text-align: center;
+      }
+
+      .overlay[data-variant="ios-hint"] .overlay-tips {
+        margin-inline: auto;
+        width: fit-content;
       }
 
       .modal h1 {
@@ -180,6 +215,17 @@
         color: var(--muted);
         font-size: 1.05rem;
         line-height: 1.45;
+        white-space: pre-line;
+      }
+
+      .overlay[data-variant="record"] .modal {
+        border-color: rgba(255, 209, 102, 0.48);
+        box-shadow: 0 24px 90px rgba(255, 209, 102, 0.16), 0 24px 80px rgba(0, 0, 0, 0.38);
+      }
+
+      .overlay[data-variant="record"] .modal p {
+        color: rgba(255, 237, 187, 0.96);
+        font-weight: 700;
       }
 
       .overlay-tips {
@@ -192,6 +238,10 @@
 
       .overlay-tips[hidden] {
         display: none;
+      }
+
+      .overlay[data-layout="sheet"] .overlay-tips {
+        margin: -6px 0 18px;
       }
 
       .modal button {
@@ -213,9 +263,51 @@
         gap: 12px;
       }
 
+      .modal-footer {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: grid;
+        justify-items: center;
+        gap: 10px;
+      }
+
+      .modal-footer[hidden] {
+        display: none;
+      }
+
+      .modal-footer p {
+        margin: 0;
+        max-width: 29ch;
+        color: rgba(244, 247, 251, 0.62);
+        font-size: 0.92rem;
+        line-height: 1.45;
+      }
+
+      .modal-footer button {
+        padding: 9px 16px;
+        font-size: 0.95rem;
+      }
+
+      .overlay[data-layout="sheet"] .modal-actions {
+        justify-content: stretch;
+      }
+
       .modal button.secondary {
         color: var(--text);
         background: rgba(255, 255, 255, 0.12);
+      }
+
+      @keyframes install-sheet-in {
+        from {
+          opacity: 0;
+          transform: translateY(18px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
 
       .app-hidden {
@@ -425,7 +517,12 @@
         <ul id="overlay-tips" class="overlay-tips" hidden></ul>
         <div class="modal-actions">
           <button id="overlay-primary-button" type="button">Продолжить</button>
+          <button id="overlay-install-button" class="secondary" type="button" hidden>Установить</button>
           <button id="overlay-secondary-button" class="secondary" type="button" hidden>Начать заново</button>
+        </div>
+        <div id="overlay-footer" class="modal-footer" hidden>
+          <p id="overlay-footer-message"></p>
+          <button id="overlay-footer-button" class="secondary" type="button">Установить</button>
         </div>
       </div>
     </div>

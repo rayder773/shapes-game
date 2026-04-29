@@ -1,4 +1,5 @@
 import { enterGamePage, enterSettingsPage, initializeGame, persistActiveProfileSettings, resetSettingsDraftToDefaults, setOpenSettingsListener, subscribeToSettingsState, updateSettingsDraft } from "./game.ts";
+import { registerPwaServiceWorker } from "./pwa.ts";
 import { getCurrentRoute, initializeRouter, navigateToRoute, subscribeToRouteChanges, type AppRoute } from "./router.ts";
 import { createSettingsPage } from "./settings-page.ts";
 
@@ -16,6 +17,7 @@ const settingsPage = createSettingsPage({
 });
 
 document.body.append(settingsPage.element);
+registerPwaServiceWorker();
 
 subscribeToSettingsState((state) => {
   settingsPage.render(state);
