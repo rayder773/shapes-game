@@ -24,6 +24,14 @@ import {
   type GameplaySettingsValues,
   type SavedGameplaySettings,
 } from "./gameplay-settings.ts";
+import { isPhoneDevice } from "./device.ts";
+import {
+  createPwaOverlayViewModel,
+  createPwaController,
+  subscribeToPwaStateChanges,
+  type PwaActionResult,
+  type PwaInstallOverlayModel,
+} from "./pwa.ts";
 
 type Shape = "circle" | "square" | "triangle";
 type ColorName = "red" | "blue" | "green";
@@ -31,7 +39,7 @@ type FillStyleName = "filled" | "outline" | "dashed";
 type InputKey = "up" | "down" | "left" | "right";
 type PhysicsBodyKind = "entity" | "wall";
 type GameState = "boot" | "playing" | "paused" | "gameOver";
-type OverlayMode = "onboarding" | "pause" | "gameOver" | null;
+type OverlayMode = "install" | "onboarding" | "pause" | "gameOver" | null;
 
 type EntityId = number;
 type PhysicsBodyId = number;
@@ -245,7 +253,6 @@ const ANGULAR_DAMPING = 0;
 const ENTITY_SIZE = 0.55;
 const WALL_THICKNESS = 0.35;
 const MAX_SPAWN_ATTEMPTS = 80;
-const COMPACT_TOUCH_BREAKPOINT = 820;
 const MIN_DIRECTION_LENGTH = 0.0001;
 const SHAPES: Shape[] = ["circle", "square", "triangle"];
 const COLORS: ColorName[] = ["red", "blue", "green"];
@@ -339,15 +346,16 @@ if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
   throw new Error("Overlay secondary button element not found");
 }
 const overlaySecondaryButton = overlaySecondaryButtonElement;
+
+const overlayInstallButtonElement = document.getElementById("overlay-install-button");
+if (!(overlayInstallButtonElement instanceof HTMLButtonElement)) {
+  throw new Error("Overlay install button element not found");
+}
+const overlayInstallButton = overlayInstallButtonElement;
 const rootStyle = document.documentElement.style;
 const settingsStateListeners = new Set<SettingsStateListener>();
+const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
-
-function detectTouchDevice(): boolean {
-  return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
-}
-
-const isTouchDevice = detectTouchDevice();
 const game = createRuntime();
 let overlayMode: OverlayMode = null;
 let shouldRetryFullscreen = true;
@@ -396,8 +404,8 @@ function createInputSnapshot(): InputSnapshot {
   };
 }
 
-function createGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
-  const compactTouch = isTouchDevice && Math.min(metrics.widthCss || 0, metrics.heightCss || 0) < COMPACT_TOUCH_BREAKPOINT;
+function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
+  const compactTouch = isPhoneDevice();
 
   if (compactTouch) {
     return {
@@ -987,43 +995,96 @@ function setRulesAccepted(): void {
   window.localStorage.setItem(RULES_STORAGE_KEY, "true");
 }
 
+function continueEntryOverlayFlow(): void {
+  if (!areRulesAccepted()) {
+    startOnboarding();
+    return;
+  }
+
+  if (game.state === "paused") {
+    resumeGame();
+  }
+}
+
 function showOnboardingOverlay(): void {
   overlayMode = "onboarding";
-  overlayTitle.textContent = "Правила";
-  overlayMessage.textContent = "";
-  setOverlayTips(GAME_RULES);
-  overlayPrimaryButton.textContent = "Понятно";
-  overlaySecondaryButton.hidden = true;
+  renderOverlay({
+    layout: "modal",
+    variant: "default",
+    title: "Правила",
+    message: "",
+    tips: GAME_RULES,
+    primaryLabel: "Понятно",
+    secondaryLabel: null,
+    installButton: null,
+  });
+}
+
+function renderOverlay(model: {
+  layout: "modal" | "sheet";
+  variant: "default" | "ios-hint";
+  title: string;
+  message: string;
+  tips: string[];
+  primaryLabel: string;
+  secondaryLabel: string | null;
+  installButton: { label: string } | null;
+}): void {
+  overlay.dataset.layout = model.layout;
+  overlay.dataset.variant = model.variant;
+  overlayTitle.textContent = model.title;
+  overlayMessage.textContent = model.message;
+  setOverlayTips(model.tips);
+  overlayPrimaryButton.textContent = model.primaryLabel;
+  overlaySecondaryButton.textContent = model.secondaryLabel ?? "";
+  overlaySecondaryButton.hidden = model.secondaryLabel === null;
+  overlayInstallButton.textContent = model.installButton?.label ?? "";
+  overlayInstallButton.hidden = model.installButton === null;
+  overlayPrimaryButton.disabled = false;
+  overlaySecondaryButton.disabled = false;
+  overlayInstallButton.disabled = false;
   overlay.classList.add("visible");
   overlay.setAttribute("aria-hidden", "false");
 }
 
 function showPauseOverlay(autoPaused: boolean): void {
   overlayMode = "pause";
-  overlayTitle.textContent = "Пауза";
-  overlayMessage.textContent = autoPaused ? "Игра остановлена." : "";
-  setOverlayTips(GAME_RULES);
-  overlayPrimaryButton.textContent = "Продолжить";
-  overlaySecondaryButton.textContent = "Настройки";
-  overlaySecondaryButton.hidden = false;
-  overlay.classList.add("visible");
-  overlay.setAttribute("aria-hidden", "false");
+  const installButtonState = pwa.getPauseInstallButtonState();
+  renderOverlay({
+    layout: "modal",
+    variant: "default",
+    title: "Пауза",
+    message: autoPaused ? "Игра остановлена." : "",
+    tips: GAME_RULES,
+    primaryLabel: "Продолжить",
+    secondaryLabel: "Настройки",
+    installButton: installButtonState.visible ? { label: installButtonState.label } : null,
+  });
 }
 
 function showGameOverOverlay(): void {
   overlayMode = "gameOver";
-  overlayTitle.textContent = "Игра окончена";
-  overlayMessage.textContent = `Счет: ${game.score}`;
-  setOverlayTips([]);
-  overlayPrimaryButton.textContent = "Начать заново";
-  overlaySecondaryButton.hidden = true;
-  overlay.classList.add("visible");
-  overlay.setAttribute("aria-hidden", "false");
+  renderOverlay({
+    layout: "modal",
+    variant: "default",
+    title: "Игра окончена",
+    message: `Счет: ${game.score}`,
+    tips: [],
+    primaryLabel: "Начать заново",
+    secondaryLabel: null,
+    installButton: null,
+  });
 }
 
 function hideOverlay(): void {
   overlayMode = null;
+  delete overlay.dataset.layout;
+  delete overlay.dataset.variant;
   setOverlayTips([]);
+  overlayPrimaryButton.disabled = false;
+  overlaySecondaryButton.disabled = false;
+  overlayInstallButton.disabled = false;
+  overlayInstallButton.hidden = true;
   overlay.classList.remove("visible");
   overlay.setAttribute("aria-hidden", "true");
 }
@@ -1060,6 +1121,59 @@ function startOnboarding(): void {
   clearInputState();
   clearActiveTouchInputs();
   showOnboardingOverlay();
+  updateHud();
+}
+
+function showExternalOverlay(model: PwaInstallOverlayModel): void {
+  overlayMode = "install";
+
+  if (model.surface === "postGameOver") {
+    game.accumulator = 0;
+    clearInputState();
+    clearActiveTouchInputs();
+    renderOverlay({
+      ...createPwaOverlayViewModel(model),
+      installButton: null,
+    });
+    updateHud();
+    return;
+  }
+
+  game.state = "paused";
+  game.accumulator = 0;
+  game.lastFrameTime = performance.now();
+  clearInputState();
+  clearActiveTouchInputs();
+  renderOverlay({
+    ...createPwaOverlayViewModel(model),
+    installButton: null,
+  });
+  updateHud();
+}
+
+function applyOverlayFlowResult(result: PwaActionResult): void {
+  if (result.type === "none") {
+    return;
+  }
+
+  if (result.type === "show-install-overlay") {
+    showExternalOverlay(result.overlay);
+    return;
+  }
+
+  if (result.target === "pause" && game.state === "paused") {
+    showPauseOverlay(false);
+    updateHud();
+    return;
+  }
+
+  if (result.target === "gameOver") {
+    showGameOverOverlay();
+    updateHud();
+    return;
+  }
+
+  hideOverlay();
   updateHud();
 }
 
@@ -1586,7 +1700,12 @@ function togglePauseGame(): void {
         game.queues.physics.length = 0;
         game.queues.collisionEvents.length = 0;
         game.accumulator = 0;
-        showGameOverOverlay();
+        const installOverlay = pwa.maybeGetAutoGameOverOverlay();
+        if (installOverlay) {
+          showExternalOverlay(installOverlay);
+        } else {
+          showGameOverOverlay();
+        }
         updateHud();
       }
     }
@@ -1865,13 +1984,12 @@ function togglePauseGame(): void {
     restartGame();
     hasInitializedGameSession = true;
 
-    if (!areRulesAccepted()) {
-      startOnboarding();
-    }
+    continueEntryOverlayFlow();
   }
 
   export function enterSettingsPage(): void {
     isGameRouteActive = false;
+    pwa.setGameRouteActive(false);
     setGameUiVisible(false);
 
     if (game.state === "playing") {
@@ -1881,6 +1999,7 @@ function togglePauseGame(): void {
 
   export function enterGamePage(): void {
     isGameRouteActive = true;
+    pwa.setGameRouteActive(true);
     setGameUiVisible(true);
 
     if (!hasInitializedGameSession || shouldRestartGameOnNextGameRoute) {
@@ -1966,6 +2085,11 @@ function togglePauseGame(): void {
   overlayPrimaryButton.addEventListener("click", () => {
     retryFullscreenOnUserGesture();
 
+    if (overlayMode === "install") {
+      void pwa.confirmOverlay().then(applyOverlayFlowResult);
+      return;
+    }
+
     if (overlayMode === "onboarding") {
       setRulesAccepted();
       resumeGame();
@@ -1985,12 +2109,27 @@ function togglePauseGame(): void {
   overlaySecondaryButton.addEventListener("click", () => {
     retryFullscreenOnUserGesture();
 
+    if (overlayMode === "install") {
+      applyOverlayFlowResult(pwa.dismissOverlay());
+      return;
+    }
+
     if (overlayMode === "pause") {
       openSettingsListener?.();
       return;
     }
 
     restartGame();
+  });
+
+  overlayInstallButton.addEventListener("click", () => {
+    retryFullscreenOnUserGesture();
+
+    if (overlayMode !== "pause") {
+      return;
+    }
+
+    void pwa.openInstallFlow("pause").then(applyOverlayFlowResult);
   });
 
   let lastPointerDownTime = 0;
@@ -2026,11 +2165,30 @@ function togglePauseGame(): void {
 
   installBrowserInteractionGuards();
   installDoubleTapZoomGuard(modal);
+  subscribeToPwaStateChanges(() => {
+    updateHud();
+
+    if (overlayMode === "pause") {
+      showPauseOverlay(false);
+      return;
+    }
+
+    if (overlayMode === "install") {
+      if (game.state === "gameOver") {
+        showGameOverOverlay();
+      } else if (game.state === "paused") {
+        showPauseOverlay(false);
+      } else {
+        hideOverlay();
+      }
+    }
+  });
 
   export function initializeGame(): void {
     resizeCanvas();
     initializeSettingsState(loadSavedGameplaySettings());
     updateGameplayProfile(true);
+    pwa.initialize();
 
     if (!hasStartedFrameLoop) {
       hasStartedFrameLoop = true;
