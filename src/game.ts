@@ -84,6 +84,7 @@ type GameEntity = {
   renderable?: true;
   player?: true;
   target?: true;
+  lifePickup?: true;
   settingsState?: GameplaySettingsState;
 };
 
@@ -106,6 +107,9 @@ type GameplayProfile = {
   playerBoostSpeed: number;
   maxTargets: number;
   targetGrowthScoreStep: number;
+  lifeSpawnChance: number;
+  startLives: number;
+  maxLives: number;
   spawnPadding: number;
   safeSpawnPadding: number;
 };
@@ -123,19 +127,40 @@ type GameplayCommand =
       targetId: EntityId;
     }
   | {
+      type: "lose-life";
+      playerId: EntityId;
+      targetId: EntityId;
+    }
+  | {
+      type: "collect-life";
+      playerId: EntityId;
+      lifeId: EntityId;
+    }
+  | {
       type: "game-over";
     };
 
-type SpawnRequest = {
-  type: "spawn-target";
-  safeForPlayer: boolean;
-  safeAppearance?: Appearance;
-};
+type SpawnRequest =
+  | {
+      type: "spawn-target";
+      safeForPlayer: boolean;
+      safeAppearance?: Appearance;
+    }
+  | {
+      type: "spawn-life";
+    };
 
-type CollisionEvent = {
-  playerId: EntityId;
-  targetId: EntityId;
-};
+type CollisionEvent =
+  | {
+      type: "player-target";
+      playerId: EntityId;
+      targetId: EntityId;
+    }
+  | {
+      type: "player-life";
+      playerId: EntityId;
+      lifeId: EntityId;
+    };
 
 type QueueState = {
   physics: PhysicsCommand[];
@@ -146,6 +171,7 @@ type QueueState = {
 
 type PlayerEntity = With<GameEntity, "player" | "transform" | "appearance" | "physics" | "movementDirection">;
 type TargetEntity = With<GameEntity, "target" | "transform" | "appearance" | "physics" | "movementDirection">;
+type LifePickupEntity = With<GameEntity, "lifePickup" | "transform" | "appearance" | "physics" | "movementDirection">;
 type PhysicsEntity = With<GameEntity, "transform" | "physics" | "movementDirection">;
 type RenderableEntity = With<GameEntity, "transform" | "appearance" | "renderable">;
 type AppearancePhysicsEntity = With<GameEntity, "appearance" | "physics" | "movementDirection">;
@@ -155,6 +181,7 @@ type SettingsEntity = With<GameEntity, "settingsState">;
 type QuerySet = {
   players: Query<PlayerEntity>;
   targets: Query<TargetEntity>;
+  lifePickups: Query<LifePickupEntity>;
   physicsBodies: Query<PhysicsEntity>;
   renderables: Query<RenderableEntity>;
   settings: Query<SettingsEntity>;
@@ -214,6 +241,7 @@ type Runtime = {
   score: number;
   bestScore: number | null;
   lastGameOverWasNewBest: boolean;
+  previousBestScoreBeforeGameOver: number | null;
   gameOverInstallPrompt: PwaInlineInstallPrompt | null;
   nextEntityId: number;
   accumulator: number;
@@ -226,6 +254,9 @@ type Runtime = {
   gameplayProfile: GameplayProfile;
   queues: QueueState;
   playerBoostExpiresAt: number;
+  lives: number;
+  maxLives: number;
+  damageInvulnerabilityExpiresAt: number;
 };
 
 type FullscreenDocument = Document & {
@@ -250,11 +281,14 @@ const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
 const MIN_POINTER_TARGET_DISTANCE = 10;
 const PLAYER_BOOST_DURATION_MS = 350;
+const DAMAGE_INVULNERABILITY_MS = 900;
+const HUD_LIVES_PULSE_MS = 320;
 const DOUBLE_TAP_WINDOW_MS = 300;
 const DOUBLE_TAP_RADIUS_PX = 40;
 const LINEAR_DAMPING = 0;
-const ANGULAR_DAMPING = 0;
+const ANGULAR_DAMPING = 0.6;
 const ENTITY_SIZE = 0.55;
+const LIFE_ENTITY_SIZE = 0.42;
 const WALL_THICKNESS = 0.35;
 const MAX_SPAWN_ATTEMPTS = 80;
 const MIN_DIRECTION_LENGTH = 0.0001;
@@ -274,7 +308,7 @@ const SETTINGS_ENTITY_ID = 0;
 const GAME_RULES = [
   "Клик, тап или клавиши мгновенно меняют направление, скорость всегда остается постоянной.",
   "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
-  "Если совпадает хотя бы одно свойство, забег сразу заканчивается.",
+  "Если совпадает хотя бы одно свойство, теряется жизнь. Забег заканчивается, когда жизни кончаются.",
 ];
 const canvasElement = document.getElementById("game");
 if (!(canvasElement instanceof HTMLCanvasElement)) {
@@ -293,12 +327,12 @@ if (!(hudScoreElement instanceof HTMLParagraphElement)) {
 }
 const hudScore = hudScoreElement;
 
-const hudPlayerElement = document.getElementById("hud-player");
-if (!(hudPlayerElement instanceof HTMLParagraphElement)) {
-  throw new Error("HUD player element not found");
+const hudLivesElement = document.getElementById("hud-lives");
+if (!(hudLivesElement instanceof HTMLDivElement)) {
+  throw new Error("HUD lives element not found");
 }
-const hudPlayer = hudPlayerElement;
-const hudElement = hudPlayer.closest(".hud");
+const hudLives = hudLivesElement;
+const hudElement = hudLives.closest(".hud");
 if (!(hudElement instanceof HTMLDivElement)) {
   throw new Error("HUD container not found");
 }
@@ -386,6 +420,7 @@ let hasStartedFrameLoop = false;
 let hasInitializedGameSession = false;
 let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
+let hudLivesPulseTimeoutId: number | null = null;
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
@@ -396,6 +431,7 @@ function createRuntime(): Runtime {
     score: 0,
     bestScore: null,
     lastGameOverWasNewBest: false,
+    previousBestScoreBeforeGameOver: null,
     gameOverInstallPrompt: null,
     nextEntityId: 1,
     accumulator: 0,
@@ -408,6 +444,9 @@ function createRuntime(): Runtime {
     gameplayProfile: createGameplayProfile(canvasMetrics),
     queues: createQueues(),
     playerBoostExpiresAt: 0,
+    lives: 3,
+    maxLives: 5,
+    damageInvulnerabilityExpiresAt: 0,
   };
 }
 
@@ -415,6 +454,7 @@ function createQueries(ecsWorld: ECSWorld<GameEntity>): QuerySet {
   return {
     players: ecsWorld.with("player", "transform", "appearance", "physics", "movementDirection"),
     targets: ecsWorld.with("target", "transform", "appearance", "physics", "movementDirection"),
+    lifePickups: ecsWorld.with("lifePickup", "transform", "appearance", "physics", "movementDirection"),
     physicsBodies: ecsWorld.with("transform", "physics", "movementDirection"),
     renderables: ecsWorld.with("transform", "appearance", "renderable"),
     settings: ecsWorld.with("settingsState"),
@@ -443,6 +483,9 @@ function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
       playerBoostSpeed: 10,
       maxTargets: 12,
       targetGrowthScoreStep: DEFAULT_TARGET_GROWTH_SCORE_STEP,
+      lifeSpawnChance: 0.15,
+      startLives: 3,
+      maxLives: 5,
       spawnPadding: 2.25,
       safeSpawnPadding: 3.1,
     };
@@ -457,6 +500,9 @@ function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
     playerBoostSpeed: 10,
     maxTargets: 20,
     targetGrowthScoreStep: DEFAULT_TARGET_GROWTH_SCORE_STEP,
+    lifeSpawnChance: 0.15,
+    startLives: 3,
+    maxLives: 5,
     spawnPadding: 1.8,
     safeSpawnPadding: 2.3,
   };
@@ -473,6 +519,9 @@ function getGameplaySettingsValues(profile: GameplayProfile): GameplaySettingsVa
     playerBoostSpeed: profile.playerBoostSpeed,
     maxTargets: profile.maxTargets,
     targetGrowthScoreStep: profile.targetGrowthScoreStep,
+    lifeSpawnChancePercent: Math.round(profile.lifeSpawnChance * 100),
+    startLives: profile.startLives,
+    maxLives: profile.maxLives,
   };
 }
 
@@ -515,7 +564,14 @@ function resolveGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
 
   return {
     ...baseProfile,
-    ...values,
+    targetSpeed: values.targetSpeed,
+    playerSpeed: values.playerSpeed,
+    playerBoostSpeed: values.playerBoostSpeed,
+    maxTargets: values.maxTargets,
+    targetGrowthScoreStep: values.targetGrowthScoreStep,
+    lifeSpawnChance: values.lifeSpawnChancePercent / 100,
+    startLives: Math.min(values.startLives, values.maxLives),
+    maxLives: values.maxLives,
   };
 }
 
@@ -549,35 +605,35 @@ function initializeSettingsState(savedSettings: SavedGameplaySettings): void {
   notifySettingsStateListeners();
 }
 
-function getShapeHudLabel(shape: Shape): string {
-  if (shape === "circle") return "○";
-  if (shape === "square") return "□";
-  return "△";
+function renderLivesHud(): void {
+  hudLives.replaceChildren();
+  hudLives.setAttribute("aria-label", `Жизни: ${game.lives} из ${game.maxLives}`);
+
+  for (let index = 0; index < game.maxLives; index += 1) {
+    const lifeSlot = document.createElement("span");
+    lifeSlot.className = "hud-life";
+    lifeSlot.textContent = "◆";
+    lifeSlot.dataset.filled = index < game.lives ? "true" : "false";
+    hudLives.append(lifeSlot);
+  }
 }
 
-function getFillHudLabel(fillStyle: FillStyleName, compact: boolean): string {
-  if (!compact) return fillStyle;
-  if (fillStyle === "filled") return "fill";
-  if (fillStyle === "outline") return "line";
-  return "dash";
-}
+function pulseLivesHud(): void {
+  hudLives.dataset.pulse = "true";
 
-function formatPlayerHud(appearance: Appearance, compact: boolean): string {
-  if (!compact) {
-    return `Игрок: ${appearance.shape} / ${appearance.color} / ${appearance.fillStyle}`;
+  if (hudLivesPulseTimeoutId !== null) {
+    window.clearTimeout(hudLivesPulseTimeoutId);
   }
 
-  return `Игрок: ${getShapeHudLabel(appearance.shape)} ${appearance.color} ${getFillHudLabel(appearance.fillStyle, true)}`;
+  hudLivesPulseTimeoutId = window.setTimeout(() => {
+    delete hudLives.dataset.pulse;
+    hudLivesPulseTimeoutId = null;
+  }, HUD_LIVES_PULSE_MS);
 }
 
 function updateHud(): void {
-  const player = getPlayerEntity();
-  const compactHud = getGameplayProfile().compactTouch;
   hudScore.textContent = `Счет: ${game.score}`;
-  hudPlayer.textContent = player
-    ? formatPlayerHud(player.appearance, compactHud)
-    : "Игрок: -";
-  hudPlayer.dataset.compact = compactHud ? "true" : "false";
+  renderLivesHud();
   pauseButton.textContent = game.state === "paused" ? "▶" : "II";
   pauseButton.setAttribute("aria-label", game.state === "paused" ? "Продолжить игру" : "Поставить игру на паузу");
 }
@@ -621,7 +677,16 @@ export function updateSettingsDraft(field: keyof GameplaySettingsValues, value: 
   const settingsEntity = getSettingsEntity();
   if (!settingsEntity) return;
 
-  settingsEntity.settingsState.draft[field] = clampGameplaySettingValue(value);
+  settingsEntity.settingsState.draft[field] = clampGameplaySettingValue(value, field);
+
+  if (field === "startLives" && settingsEntity.settingsState.draft.startLives > settingsEntity.settingsState.draft.maxLives) {
+    settingsEntity.settingsState.draft.maxLives = settingsEntity.settingsState.draft.startLives;
+  }
+
+  if (field === "maxLives" && settingsEntity.settingsState.draft.startLives > settingsEntity.settingsState.draft.maxLives) {
+    settingsEntity.settingsState.draft.startLives = settingsEntity.settingsState.draft.maxLives;
+  }
+
   notifySettingsStateListeners();
 }
 
@@ -719,6 +784,10 @@ function executePhysicsCommand(command: PhysicsCommand): void {
 
 function isPlayerBoostActive(): boolean {
   return game.playerBoostExpiresAt > performance.now();
+}
+
+function isDamageInvulnerabilityActive(): boolean {
+  return game.damageInvulnerabilityExpiresAt > performance.now();
 }
 
 function getEntitySpeed(entity: PhysicsEntity): number {
@@ -970,6 +1039,15 @@ function installDoubleTapZoomGuard(element: HTMLElement): void {
     };
   }
 
+  function createLifePickupAppearance(): Appearance {
+    return {
+      shape: "square",
+      color: "green",
+      fillStyle: "outline",
+      size: LIFE_ENTITY_SIZE,
+    };
+  }
+
   function getDesiredTargetCount(score: number): number {
     const profile = getGameplayProfile();
     const startTargetCount = Math.min(profile.startTargetCount, profile.maxTargets);
@@ -1118,13 +1196,16 @@ function showPauseOverlay(autoPaused: boolean): void {
 }
 
 function showGameOverOverlay(): void {
+  const previousBestLabel = game.previousBestScoreBeforeGameOver === null
+    ? ""
+    : `\nПредыдущий рекорд: ${game.previousBestScoreBeforeGameOver}`;
   overlayMode = "gameOver";
   renderOverlay({
     layout: "modal",
     variant: game.lastGameOverWasNewBest ? "record" : "default",
     title: "Игра окончена",
     message: game.lastGameOverWasNewBest
-      ? `Счет: ${game.score}\nНовый рекорд!`
+      ? `Счет: ${game.score}\nНовый рекорд!${previousBestLabel}`
       : `Счет: ${game.score}`,
     tips: [],
     primaryLabel: "Начать заново",
@@ -1497,6 +1578,15 @@ function togglePauseGame(): void {
     return count;
   }
 
+  function hasLifePickup(): boolean {
+    for (const entity of game.queries.lifePickups) {
+      void entity;
+      return true;
+    }
+
+    return false;
+  }
+
   function getEntityById(entityId: EntityId): InteractiveEntity | null {
     for (const entity of game.ecsWorld.with("transform", "appearance", "physics", "movementDirection")) {
       if (entity.id === entityId) return entity;
@@ -1551,21 +1641,22 @@ function togglePauseGame(): void {
   }
 
   function createFigureEntity(options: {
-    isPlayer?: boolean;
+    role: "player" | "target" | "lifePickup";
     appearance?: Appearance | null;
     safeForAppearance?: Appearance | null;
     spawnPadding?: number;
   }): GameEntity {
-    const isPlayer = options.isPlayer ?? false;
+    const isPlayer = options.role === "player";
+    const isLifePickup = options.role === "lifePickup";
     const profile = getGameplayProfile();
     const spawnPadding = options.spawnPadding ?? profile.spawnPadding;
     const nextAppearance: Appearance = options.appearance ?? {
-      ...createEntityProperties(options.safeForAppearance ?? null),
-      size: ENTITY_SIZE,
+      ...(isLifePickup ? createLifePickupAppearance() : createEntityProperties(options.safeForAppearance ?? null)),
+      size: isLifePickup ? LIFE_ENTITY_SIZE : ENTITY_SIZE,
     };
     const initialDirection = getRandomDirection();
 
-    const entity: InteractiveEntity & ({ player: true } | { target: true }) = {
+    const entity: InteractiveEntity & ({ player: true } | { target: true } | { lifePickup: true }) = {
       id: game.nextEntityId++,
       transform: { x: 0, y: 0, angle: 0 },
       appearance: nextAppearance,
@@ -1575,7 +1666,7 @@ function togglePauseGame(): void {
       },
       movementDirection: initialDirection,
       renderable: true,
-      ...(isPlayer ? { player: true } : { target: true }),
+      ...(isPlayer ? { player: true } : isLifePickup ? { lifePickup: true } : { target: true }),
     };
 
     const spawn = findSpawnPosition({
@@ -1686,17 +1777,33 @@ function togglePauseGame(): void {
       if (!entityA || !entityB) continue;
 
       const playerEntity = entityA.player ? entityA : entityB.player ? entityB : null;
-      const targetEntity = entityA.target ? entityA : entityB.target ? entityB : null;
-      if (!playerEntity || !targetEntity) continue;
+      if (!playerEntity) continue;
 
-      const pairKey = `${playerEntity.id}:${targetEntity.id}`;
+      const targetEntity = entityA.target ? entityA : entityB.target ? entityB : null;
+      const lifeEntity = entityA.lifePickup ? entityA : entityB.lifePickup ? entityB : null;
+      if (!targetEntity && !lifeEntity) continue;
+
+      const pairKey = `${playerEntity.id}:${targetEntity?.id ?? `life:${lifeEntity?.id ?? "unknown"}`}`;
       if (uniquePairs.has(pairKey)) continue;
 
       uniquePairs.add(pairKey);
-      game.queues.collisionEvents.push({
-        playerId: playerEntity.id,
-        targetId: targetEntity.id,
-      });
+
+      if (targetEntity) {
+        game.queues.collisionEvents.push({
+          type: "player-target",
+          playerId: playerEntity.id,
+          targetId: targetEntity.id,
+        });
+        continue;
+      }
+
+      if (lifeEntity) {
+        game.queues.collisionEvents.push({
+          type: "player-life",
+          playerId: playerEntity.id,
+          lifeId: lifeEntity.id,
+        });
+      }
     }
   }
 
@@ -1709,6 +1816,15 @@ function togglePauseGame(): void {
     while (game.queues.collisionEvents.length > 0) {
       const collision = game.queues.collisionEvents.shift();
       if (!collision) continue;
+
+      if (collision.type === "player-life") {
+        game.queues.gameplay.push({
+          type: "collect-life",
+          playerId: collision.playerId,
+          lifeId: collision.lifeId,
+        });
+        continue;
+      }
 
       const player = getEntityById(collision.playerId);
       const target = getEntityById(collision.targetId);
@@ -1723,7 +1839,15 @@ function togglePauseGame(): void {
         continue;
       }
 
-      game.queues.gameplay.push({ type: "game-over" });
+      if (game.lives > 1) {
+        game.queues.gameplay.push({
+          type: "lose-life",
+          playerId: player.id,
+          targetId: target.id,
+        });
+      } else {
+        game.queues.gameplay.push({ type: "game-over" });
+      }
       break;
     }
   }
@@ -1753,6 +1877,41 @@ function togglePauseGame(): void {
         destroyFigureEntity(target);
         game.score += 1;
         updateHud();
+
+        if (!hasLifePickup() && Math.random() < getGameplayProfile().lifeSpawnChance) {
+          game.queues.spawns.push({ type: "spawn-life" });
+        }
+      }
+
+      if (command.type === "lose-life") {
+        if (game.state !== "playing") continue;
+
+        const target = getEntityById(command.targetId);
+        if (target) {
+          destroyFigureEntity(target);
+        }
+
+        game.lives = Math.max(0, game.lives - 1);
+        game.damageInvulnerabilityExpiresAt = performance.now() + DAMAGE_INVULNERABILITY_MS;
+        game.queues.collisionEvents.length = 0;
+        updateHud();
+      }
+
+      if (command.type === "collect-life") {
+        if (game.state !== "playing") continue;
+
+        const lifeEntity = getEntityById(command.lifeId);
+        if (!lifeEntity?.lifePickup) continue;
+
+        destroyFigureEntity(lifeEntity);
+
+        if (game.lives < game.maxLives) {
+          game.lives += 1;
+        } else {
+          pulseLivesHud();
+        }
+
+        updateHud();
       }
 
       if (command.type === "game-over") {
@@ -1766,6 +1925,7 @@ function togglePauseGame(): void {
         }
 
         game.lastGameOverWasNewBest = isNewBestScore;
+        game.previousBestScoreBeforeGameOver = isNewBestScore ? previousBestScore : null;
         game.gameOverInstallPrompt = pwa.consumeGameOverInstallPrompt();
         game.state = "gameOver";
         clearInputState();
@@ -1773,6 +1933,7 @@ function togglePauseGame(): void {
         game.queues.physics.length = 0;
         game.queues.collisionEvents.length = 0;
         game.accumulator = 0;
+        game.damageInvulnerabilityExpiresAt = 0;
         showGameOverOverlay();
         updateHud();
       }
@@ -1816,13 +1977,23 @@ function togglePauseGame(): void {
   function SpawnApplySystem(): void {
     while (game.queues.spawns.length > 0) {
       const request = game.queues.spawns.shift();
-      if (!request || request.type !== "spawn-target") continue;
+      if (!request) continue;
 
-      createFigureEntity({
-        isPlayer: false,
-        safeForAppearance: request.safeForPlayer ? request.safeAppearance ?? null : null,
-        spawnPadding: request.safeForPlayer ? getGameplayProfile().safeSpawnPadding : getGameplayProfile().spawnPadding,
-      });
+      if (request.type === "spawn-target") {
+        createFigureEntity({
+          role: "target",
+          safeForAppearance: request.safeForPlayer ? request.safeAppearance ?? null : null,
+          spawnPadding: request.safeForPlayer ? getGameplayProfile().safeSpawnPadding : getGameplayProfile().spawnPadding,
+        });
+        continue;
+      }
+
+      if (!hasLifePickup()) {
+        createFigureEntity({
+          role: "lifePickup",
+          spawnPadding: getGameplayProfile().safeSpawnPadding,
+        });
+      }
     }
   }
 
@@ -1849,15 +2020,6 @@ function togglePauseGame(): void {
     ctx.closePath();
   }
 
-  function drawRoomBorder(): void {
-    const metrics = getCanvasMetrics();
-    ctx.save();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, metrics.widthCss - 2, metrics.heightCss - 2);
-    ctx.restore();
-  }
-
   function drawPlayerMarker(): void {
     ctx.save();
     ctx.fillStyle = "#ffffff";
@@ -1870,32 +2032,65 @@ function togglePauseGame(): void {
     ctx.restore();
   }
 
+  function drawLifePickup(size: number): void {
+    const radius = size * SCALE * 0.96;
+    const crossSize = radius * 0.34;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -radius);
+    ctx.lineTo(radius, 0);
+    ctx.lineTo(0, radius);
+    ctx.lineTo(-radius, 0);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(-crossSize, 0);
+    ctx.lineTo(crossSize, 0);
+    ctx.moveTo(0, -crossSize);
+    ctx.lineTo(0, crossSize);
+    ctx.stroke();
+  }
+
   function drawEntity(entity: RenderableEntity): void {
     const { x, y } = worldToCanvas(entity.transform.x, entity.transform.y);
-    const color = COLOR_MAP[entity.appearance.color];
+    const color = entity.lifePickup ? "#ffd166" : COLOR_MAP[entity.appearance.color];
+    const isInvulnerablePlayer = entity.player && isDamageInvulnerabilityActive();
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(-entity.transform.angle);
-    ctx.lineWidth = entity.player ? 4.5 : 2.2;
+    ctx.lineWidth = entity.player ? 4.5 : entity.lifePickup ? 2.8 : 2.2;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.setLineDash(entity.appearance.fillStyle === "dashed" ? [9, 6] : []);
+    ctx.setLineDash(entity.lifePickup ? [] : entity.appearance.fillStyle === "dashed" ? [9, 6] : []);
 
-    traceShape(entity.appearance.shape, entity.appearance.size);
-
-    if (entity.appearance.fillStyle === "filled") {
-      ctx.globalAlpha = 0.9;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.stroke();
+    if (entity.lifePickup) {
+      ctx.shadowColor = "rgba(255, 209, 102, 0.34)";
+      ctx.shadowBlur = 14;
+      drawLifePickup(entity.appearance.size);
     } else {
-      ctx.stroke();
+      traceShape(entity.appearance.shape, entity.appearance.size);
+
+      if (entity.appearance.fillStyle === "filled") {
+        ctx.globalAlpha = 0.9;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+      } else {
+        ctx.stroke();
+      }
     }
 
     ctx.setLineDash([]);
 
     if (entity.player) {
+      if (isInvulnerablePlayer && Math.floor(performance.now() / 90) % 2 === 0) {
+        traceShape(entity.appearance.shape, entity.appearance.size * 1.18);
+        ctx.strokeStyle = "#ffd166";
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+      }
       drawPlayerMarker();
     }
 
@@ -1905,7 +2100,6 @@ function togglePauseGame(): void {
   function RenderSystem(): void {
     const metrics = getCanvasMetrics();
     ctx.clearRect(0, 0, metrics.widthCss, metrics.heightCss);
-    drawRoomBorder();
 
     for (const entity of game.queries.renderables) {
       drawEntity(entity);
@@ -1962,6 +2156,16 @@ function togglePauseGame(): void {
         bodyIdA === playerBodyId ? bodyIdB : bodyIdB === playerBodyId ? bodyIdA : null;
       if (otherBodyId === null) return false;
 
+      if (isDamageInvulnerabilityActive()) {
+        return true;
+      }
+
+      for (const lifePickup of game.queries.lifePickups) {
+        if (lifePickup.physics.bodyId === otherBodyId) {
+          return true;
+        }
+      }
+
       for (const target of game.queries.targets) {
         if (target.physics.bodyId === otherBodyId) {
           return areAllPropertiesDifferent(player.appearance, target.appearance);
@@ -1972,7 +2176,10 @@ function togglePauseGame(): void {
     clearGameplayEntities();
     updateGameplayProfile();
     game.score = 0;
+    game.lives = getGameplayProfile().startLives;
+    game.maxLives = getGameplayProfile().maxLives;
     game.lastGameOverWasNewBest = false;
+    game.previousBestScoreBeforeGameOver = null;
     game.gameOverInstallPrompt = null;
     game.nextEntityId = 1;
     game.accumulator = 0;
@@ -1980,6 +2187,7 @@ function togglePauseGame(): void {
     game.state = "playing";
     game.queues = createQueues();
     game.playerBoostExpiresAt = 0;
+    game.damageInvulnerabilityExpiresAt = 0;
     clearInputState();
     clearActiveTouchInputs();
     hideOverlay();
@@ -1987,14 +2195,14 @@ function togglePauseGame(): void {
   }
 
   function seedWorld(): void {
-    createFigureEntity({ isPlayer: true });
+    createFigureEntity({ role: "player" });
     const desiredTargetCount = getDesiredTargetCount(0);
     const profile = getGameplayProfile();
     const startPadding = profile.compactTouch ? profile.safeSpawnPadding : profile.spawnPadding;
 
     for (let index = 0; index < desiredTargetCount; index += 1) {
       createFigureEntity({
-        isPlayer: false,
+        role: "target",
         spawnPadding: startPadding,
       });
     }
