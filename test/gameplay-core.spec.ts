@@ -180,6 +180,9 @@ describe("gameplay core", () => {
       && target.color !== player.color
       && target.fillStyle !== player.fillStyle
     ));
+    const safeTarget = api.getTargets().find((target) => target.id === safeTargetId);
+    expect(safeTarget).toBeDefined();
+    const safeTargetAppearance = { ...safeTarget!.appearance! };
     setDeterministicRandom([0]);
     await chaseUntil(
       () => api.getTargets().find((target) => target.id === safeTargetId),
@@ -190,6 +193,8 @@ describe("gameplay core", () => {
     let state = snapshot();
     expect(state.score).toBe(1);
     expect(document.getElementById("hud-score")?.textContent).toBe("Счет: 1");
+    expect(api.getTargets().find((target) => target.id === safeTargetId)).toBeUndefined();
+    expect(api.getPlayer()?.appearance).toMatchObject(safeTargetAppearance);
     expect(api.getLifePickups()).toHaveLength(1);
     expect(api.getCoinPickups()).toHaveLength(1);
     const livesBeforeLifePickup = state.lives;
@@ -206,6 +211,7 @@ describe("gameplay core", () => {
       () => snapshot().coins === 1,
       220,
     );
+    expect(api.getCoinPickups()).toHaveLength(0);
     expect(document.getElementById("hud-coins")?.dataset.pulse).toBe("true");
   });
 
@@ -239,6 +245,10 @@ describe("gameplay core", () => {
       220,
     );
 
+    expect(snapshot().lives).toBe(livesBeforeHit - 1);
+    expect(api.getTargets().find((target) => target.id === targetId)).toBeUndefined();
+
+    await advanceFrames(8);
     expect(snapshot().lives).toBe(livesBeforeHit - 1);
   });
 
