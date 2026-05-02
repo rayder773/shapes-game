@@ -362,6 +362,18 @@ if (!(hudScoreElement instanceof HTMLParagraphElement)) {
 }
 const hudScore = hudScoreElement;
 
+const hudBestElement = document.getElementById("hud-best");
+if (!(hudBestElement instanceof HTMLDivElement)) {
+  throw new Error("HUD best score element not found");
+}
+const hudBest = hudBestElement;
+
+const hudBestValueElement = document.getElementById("hud-best-value");
+if (!(hudBestValueElement instanceof HTMLSpanElement)) {
+  throw new Error("HUD best score value element not found");
+}
+const hudBestValue = hudBestValueElement;
+
 const hudCoinsElement = document.getElementById("hud-coins");
 if (!(hudCoinsElement instanceof HTMLDivElement)) {
   throw new Error("HUD coins element not found");
@@ -528,6 +540,12 @@ if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
   throw new Error("Overlay secondary button element not found");
 }
 const overlaySecondaryButton = overlaySecondaryButtonElement;
+
+const overlayTertiaryButtonElement = document.getElementById("overlay-tertiary-button");
+if (!(overlayTertiaryButtonElement instanceof HTMLButtonElement)) {
+  throw new Error("Overlay tertiary button element not found");
+}
+const overlayTertiaryButton = overlayTertiaryButtonElement;
 
 const overlayInstallButtonElement = document.getElementById("overlay-install-button");
 if (!(overlayInstallButtonElement instanceof HTMLButtonElement)) {
@@ -782,6 +800,9 @@ function pulseCoinsHud(): void {
 
 function updateHud(): void {
   hudScore.textContent = `Счет: ${game.score}`;
+  const bestScore = game.bestScore ?? 0;
+  hudBestValue.textContent = String(bestScore);
+  hudBest.setAttribute("aria-label", `Лучший счет: ${bestScore}`);
   hudCoinsValue.textContent = String(game.coins);
   hudCoins.setAttribute("aria-label", `Монеты: ${game.coins}`);
   renderLivesHud();
@@ -1424,6 +1445,7 @@ function showOnboardingOverlay(): void {
     tips: GAME_RULES,
     primaryLabel: "Понятно",
     secondaryLabel: null,
+    tertiaryLabel: null,
     installButton: null,
     footerPrompt: null,
   });
@@ -1437,6 +1459,7 @@ function renderOverlay(model: {
   tips: string[];
   primaryLabel: string;
   secondaryLabel: string | null;
+  tertiaryLabel: string | null;
   installButton: { label: string } | null;
   footerPrompt: PwaInlineInstallPrompt | null;
 }): void {
@@ -1450,6 +1473,8 @@ function renderOverlay(model: {
   overlayPrimaryButton.textContent = model.primaryLabel;
   overlaySecondaryButton.textContent = model.secondaryLabel ?? "";
   overlaySecondaryButton.hidden = model.secondaryLabel === null;
+  overlayTertiaryButton.textContent = model.tertiaryLabel ?? "";
+  overlayTertiaryButton.hidden = model.tertiaryLabel === null;
   overlayInstallButton.textContent = model.installButton?.label ?? "";
   overlayInstallButton.hidden = model.installButton === null;
   overlayFooterMessage.textContent = model.footerPrompt?.message ?? "";
@@ -1457,6 +1482,7 @@ function renderOverlay(model: {
   overlayFooter.hidden = model.footerPrompt === null;
   overlayPrimaryButton.disabled = false;
   overlaySecondaryButton.disabled = false;
+  overlayTertiaryButton.disabled = false;
   overlayInstallButton.disabled = false;
   overlayFooterButton.disabled = false;
   overlay.classList.add("visible");
@@ -1474,6 +1500,7 @@ function showPauseOverlay(autoPaused: boolean): void {
     tips: GAME_RULES,
     primaryLabel: "Продолжить",
     secondaryLabel: "Настройки",
+    tertiaryLabel: "Начать заново",
     installButton: installButtonState.visible ? { label: installButtonState.label } : null,
     footerPrompt: null,
   });
@@ -1489,6 +1516,7 @@ function showGameOverOverlay(): void {
     tips: [],
     primaryLabel: "Начать заново",
     secondaryLabel: null,
+    tertiaryLabel: null,
     installButton: null,
     footerPrompt: game.gameOverInstallPrompt,
   });
@@ -1503,8 +1531,10 @@ function hideOverlay(): void {
   overlayMessage.hidden = false;
   overlayPrimaryButton.disabled = false;
   overlaySecondaryButton.disabled = false;
+  overlayTertiaryButton.disabled = false;
   overlayInstallButton.disabled = false;
   overlayFooterButton.disabled = false;
+  overlayTertiaryButton.hidden = true;
   overlayInstallButton.hidden = true;
   overlayFooter.hidden = true;
   resetResultsScreen();
@@ -1556,6 +1586,7 @@ function showExternalOverlay(model: PwaInstallOverlayModel): void {
     clearActiveTouchInputs();
     renderOverlay({
       ...createPwaOverlayViewModel(model),
+      tertiaryLabel: null,
       installButton: null,
       footerPrompt: null,
     });
@@ -1570,6 +1601,7 @@ function showExternalOverlay(model: PwaInstallOverlayModel): void {
   clearActiveTouchInputs();
   renderOverlay({
     ...createPwaOverlayViewModel(model),
+    tertiaryLabel: null,
     installButton: null,
     footerPrompt: null,
   });
@@ -2785,6 +2817,16 @@ function togglePauseGame(): void {
 
     if (overlayMode === "pause") {
       openSettingsListener?.();
+      return;
+    }
+
+    restartGame();
+  });
+
+  overlayTertiaryButton.addEventListener("click", () => {
+    retryFullscreenOnUserGesture();
+
+    if (overlayMode !== "pause") {
       return;
     }
 
