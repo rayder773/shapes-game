@@ -63,5 +63,10 @@ describe("settings", () => {
     expect(saved.desktop.startLives).toBe(5);
     expect(saved.desktop.maxLives).toBe(7);
     expect(saved.compactTouch).toEqual({});
+
+    await bootApp("/shapes-game/");
+    expect(snapshot().gameplayProfile.targetSpeed).toBe(8);
+    expect(snapshot().gameplayProfile.startLives).toBe(5);
+    expect(snapshot().gameplayProfile.maxLives).toBe(7);
   });
 });
