@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
   advanceFrames,
-  advanceUntil,
   bootApp,
   click,
   getPauseButton,
@@ -78,11 +77,13 @@ function findClearTarget(
   if (!player?.transform || !player.appearance || !player.physics) {
     return undefined;
   }
+  const playerAppearance = player.appearance;
 
   const targets = state.entities.filter((entity) => entity.target && entity.transform && entity.appearance && entity.physics);
 
   return targets.find((target) => {
-    if (!predicate(player.appearance, target.appearance!)) {
+    const targetAppearance = target.appearance;
+    if (!targetAppearance || !predicate(playerAppearance, targetAppearance)) {
       return false;
     }
 

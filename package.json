@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "pwa:preview": "npm run build && vite preview --host 0.0.0.0",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run"
