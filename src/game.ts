@@ -2540,26 +2540,17 @@ function togglePauseGame(): void {
         bodyIdA === playerBodyId ? bodyIdB : bodyIdB === playerBodyId ? bodyIdA : null;
       if (otherBodyId === null) return false;
 
+      const otherEntity = getEntityByBodyId(otherBodyId);
+      if (!otherEntity) return false;
+
       if (isDamageInvulnerabilityActive()) {
-        return true;
+        return !!(otherEntity.target || otherEntity.lifePickup || otherEntity.coinPickup);
       }
 
-      for (const lifePickup of game.queries.lifePickups) {
-        if (lifePickup.physics.bodyId === otherBodyId) {
-          return true;
-        }
-      }
-
-      for (const coinPickup of game.queries.coinPickups) {
-        if (coinPickup.physics.bodyId === otherBodyId) {
-          return true;
-        }
-      }
-
-      for (const target of game.queries.targets) {
-        if (target.physics.bodyId === otherBodyId) {
-          return areAllPropertiesDifferent(player.appearance, target.appearance);
-        }
+      if (otherEntity.lifePickup || otherEntity.coinPickup) return true;
+      const otherTarget = otherEntity.target ? otherEntity : null;
+      if (otherTarget) {
+        return areAllPropertiesDifferent(player.appearance!, otherTarget.appearance!);
       }
       return false;
     });
