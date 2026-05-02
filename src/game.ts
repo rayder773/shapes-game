@@ -33,6 +33,14 @@ import {
   type PwaInlineInstallPrompt,
   type PwaInstallOverlayModel,
 } from "./pwa.ts";
+import {
+  createLifeIconSvgMarkup,
+  getCoinHexagonPoints,
+  getCoinInnerRadius,
+  getCoinSpokes,
+  getLifeCrossSegments,
+  getLifeDiamondPoints,
+} from "./icons.ts";
 
 type Shape = "circle" | "square" | "triangle";
 type ColorName = "red" | "blue" | "green";
@@ -85,6 +93,7 @@ type GameEntity = {
   player?: true;
   target?: true;
   lifePickup?: true;
+  coinPickup?: true;
   settingsState?: GameplaySettingsState;
 };
 
@@ -108,6 +117,7 @@ type GameplayProfile = {
   maxTargets: number;
   targetGrowthScoreStep: number;
   lifeSpawnChance: number;
+  coinSpawnChance: number;
   startLives: number;
   maxLives: number;
   spawnPadding: number;
@@ -137,6 +147,11 @@ type GameplayCommand =
       lifeId: EntityId;
     }
   | {
+      type: "collect-coin";
+      playerId: EntityId;
+      coinId: EntityId;
+    }
+  | {
       type: "game-over";
     };
 
@@ -148,6 +163,9 @@ type SpawnRequest =
     }
   | {
       type: "spawn-life";
+    }
+  | {
+      type: "spawn-coin";
     };
 
 type CollisionEvent =
@@ -160,6 +178,11 @@ type CollisionEvent =
       type: "player-life";
       playerId: EntityId;
       lifeId: EntityId;
+    }
+  | {
+      type: "player-coin";
+      playerId: EntityId;
+      coinId: EntityId;
     };
 
 type QueueState = {
@@ -172,6 +195,7 @@ type QueueState = {
 type PlayerEntity = With<GameEntity, "player" | "transform" | "appearance" | "physics" | "movementDirection">;
 type TargetEntity = With<GameEntity, "target" | "transform" | "appearance" | "physics" | "movementDirection">;
 type LifePickupEntity = With<GameEntity, "lifePickup" | "transform" | "appearance" | "physics" | "movementDirection">;
+type CoinPickupEntity = With<GameEntity, "coinPickup" | "transform" | "appearance" | "physics" | "movementDirection">;
 type PhysicsEntity = With<GameEntity, "transform" | "physics" | "movementDirection">;
 type RenderableEntity = With<GameEntity, "transform" | "appearance" | "renderable">;
 type AppearancePhysicsEntity = With<GameEntity, "appearance" | "physics" | "movementDirection">;
@@ -182,6 +206,7 @@ type QuerySet = {
   players: Query<PlayerEntity>;
   targets: Query<TargetEntity>;
   lifePickups: Query<LifePickupEntity>;
+  coinPickups: Query<CoinPickupEntity>;
   physicsBodies: Query<PhysicsEntity>;
   renderables: Query<RenderableEntity>;
   settings: Query<SettingsEntity>;
@@ -239,9 +264,14 @@ type PhysicsAdapter = {
 type Runtime = {
   state: GameState;
   score: number;
+  coins: number;
   bestScore: number | null;
   lastGameOverWasNewBest: boolean;
   previousBestScoreBeforeGameOver: number | null;
+  lastRoundBaseScore: number;
+  lastRoundCoinBonus: number;
+  lastRoundFinalScore: number;
+  lastRoundBestScore: number | null;
   gameOverInstallPrompt: PwaInlineInstallPrompt | null;
   nextEntityId: number;
   accumulator: number;
@@ -283,12 +313,15 @@ const MIN_POINTER_TARGET_DISTANCE = 10;
 const PLAYER_BOOST_DURATION_MS = 350;
 const DAMAGE_INVULNERABILITY_MS = 900;
 const HUD_LIVES_PULSE_MS = 320;
+const HUD_COINS_PULSE_MS = 360;
 const DOUBLE_TAP_WINDOW_MS = 300;
 const DOUBLE_TAP_RADIUS_PX = 40;
 const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.6;
 const ENTITY_SIZE = 0.55;
 const LIFE_ENTITY_SIZE = 0.42;
+const COIN_ENTITY_SIZE = 0.4;
+const COIN_BONUS_MULTIPLIER = 2;
 const WALL_THICKNESS = 0.35;
 const MAX_SPAWN_ATTEMPTS = 80;
 const MIN_DIRECTION_LENGTH = 0.0001;
@@ -300,6 +333,8 @@ const COLOR_MAP: Record<ColorName, string> = {
   blue: "#66a8ff",
   green: "#59e093",
 };
+const LIFE_COLOR = "#b894ff";
+const COIN_COLOR = "#ffd166";
 const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
 const PAUSE_KEY = "escape";
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
@@ -326,6 +361,30 @@ if (!(hudScoreElement instanceof HTMLParagraphElement)) {
   throw new Error("HUD score element not found");
 }
 const hudScore = hudScoreElement;
+
+const hudBestElement = document.getElementById("hud-best");
+if (!(hudBestElement instanceof HTMLDivElement)) {
+  throw new Error("HUD best score element not found");
+}
+const hudBest = hudBestElement;
+
+const hudBestValueElement = document.getElementById("hud-best-value");
+if (!(hudBestValueElement instanceof HTMLSpanElement)) {
+  throw new Error("HUD best score value element not found");
+}
+const hudBestValue = hudBestValueElement;
+
+const hudCoinsElement = document.getElementById("hud-coins");
+if (!(hudCoinsElement instanceof HTMLDivElement)) {
+  throw new Error("HUD coins element not found");
+}
+const hudCoins = hudCoinsElement;
+
+const hudCoinsValueElement = document.getElementById("hud-coins-value");
+if (!(hudCoinsValueElement instanceof HTMLSpanElement)) {
+  throw new Error("HUD coins value element not found");
+}
+const hudCoinsValue = hudCoinsValueElement;
 
 const hudLivesElement = document.getElementById("hud-lives");
 if (!(hudLivesElement instanceof HTMLDivElement)) {
@@ -368,6 +427,84 @@ if (!(overlayMessageElement instanceof HTMLParagraphElement)) {
 }
 const overlayMessage = overlayMessageElement;
 
+const resultsScreenElement = document.getElementById("results-screen");
+if (!(resultsScreenElement instanceof HTMLElement)) {
+  throw new Error("Results screen element not found");
+}
+const resultsScreen = resultsScreenElement;
+
+const resultsBaseRowElement = document.getElementById("results-base-row");
+if (!(resultsBaseRowElement instanceof HTMLDivElement)) {
+  throw new Error("Results base row element not found");
+}
+const resultsBaseRow = resultsBaseRowElement;
+
+const resultsCoinsRowElement = document.getElementById("results-coins-row");
+if (!(resultsCoinsRowElement instanceof HTMLDivElement)) {
+  throw new Error("Results coins row element not found");
+}
+const resultsCoinsRow = resultsCoinsRowElement;
+
+const resultsBonusRowElement = document.getElementById("results-bonus-row");
+if (!(resultsBonusRowElement instanceof HTMLDivElement)) {
+  throw new Error("Results bonus row element not found");
+}
+const resultsBonusRow = resultsBonusRowElement;
+
+const resultsBaseValueElement = document.getElementById("results-base-value");
+if (!(resultsBaseValueElement instanceof HTMLElement)) {
+  throw new Error("Results base value element not found");
+}
+const resultsBaseValue = resultsBaseValueElement;
+
+const resultsCoinsValueElement = document.getElementById("results-coins-value");
+if (!(resultsCoinsValueElement instanceof HTMLElement)) {
+  throw new Error("Results coins value element not found");
+}
+const resultsCoinsValue = resultsCoinsValueElement;
+
+const resultsBonusValueElement = document.getElementById("results-bonus-value");
+if (!(resultsBonusValueElement instanceof HTMLElement)) {
+  throw new Error("Results bonus value element not found");
+}
+const resultsBonusValue = resultsBonusValueElement;
+
+const resultsFinalCardElement = document.getElementById("results-final-card");
+if (!(resultsFinalCardElement instanceof HTMLDivElement)) {
+  throw new Error("Results final card element not found");
+}
+const resultsFinalCard = resultsFinalCardElement;
+
+const resultsFinalValueElement = document.getElementById("results-final-value");
+if (!(resultsFinalValueElement instanceof HTMLElement)) {
+  throw new Error("Results final value element not found");
+}
+const resultsFinalValue = resultsFinalValueElement;
+
+const resultsMetaElement = document.getElementById("results-meta");
+if (!(resultsMetaElement instanceof HTMLDivElement)) {
+  throw new Error("Results meta element not found");
+}
+const resultsMeta = resultsMetaElement;
+
+const resultsBestValueElement = document.getElementById("results-best-value");
+if (!(resultsBestValueElement instanceof HTMLElement)) {
+  throw new Error("Results best value element not found");
+}
+const resultsBestValue = resultsBestValueElement;
+
+const resultsRecordBadgeElement = document.getElementById("results-record-badge");
+if (!(resultsRecordBadgeElement instanceof HTMLDivElement)) {
+  throw new Error("Results record badge element not found");
+}
+const resultsRecordBadge = resultsRecordBadgeElement;
+
+const resultsBurstElement = document.getElementById("results-burst");
+if (!(resultsBurstElement instanceof HTMLDivElement)) {
+  throw new Error("Results burst element not found");
+}
+const resultsBurst = resultsBurstElement;
+
 const overlayFooterElement = document.getElementById("overlay-footer");
 if (!(overlayFooterElement instanceof HTMLDivElement)) {
   throw new Error("Overlay footer element not found");
@@ -404,6 +541,12 @@ if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
 }
 const overlaySecondaryButton = overlaySecondaryButtonElement;
 
+const overlayTertiaryButtonElement = document.getElementById("overlay-tertiary-button");
+if (!(overlayTertiaryButtonElement instanceof HTMLButtonElement)) {
+  throw new Error("Overlay tertiary button element not found");
+}
+const overlayTertiaryButton = overlayTertiaryButtonElement;
+
 const overlayInstallButtonElement = document.getElementById("overlay-install-button");
 if (!(overlayInstallButtonElement instanceof HTMLButtonElement)) {
   throw new Error("Overlay install button element not found");
@@ -421,6 +564,8 @@ let hasInitializedGameSession = false;
 let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
 let hudLivesPulseTimeoutId: number | null = null;
+let hudCoinsPulseTimeoutId: number | null = null;
+let resultsAnimationToken = 0;
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
@@ -429,9 +574,14 @@ function createRuntime(): Runtime {
   return {
     state: "boot",
     score: 0,
+    coins: 0,
     bestScore: null,
     lastGameOverWasNewBest: false,
     previousBestScoreBeforeGameOver: null,
+    lastRoundBaseScore: 0,
+    lastRoundCoinBonus: 0,
+    lastRoundFinalScore: 0,
+    lastRoundBestScore: null,
     gameOverInstallPrompt: null,
     nextEntityId: 1,
     accumulator: 0,
@@ -455,6 +605,7 @@ function createQueries(ecsWorld: ECSWorld<GameEntity>): QuerySet {
     players: ecsWorld.with("player", "transform", "appearance", "physics", "movementDirection"),
     targets: ecsWorld.with("target", "transform", "appearance", "physics", "movementDirection"),
     lifePickups: ecsWorld.with("lifePickup", "transform", "appearance", "physics", "movementDirection"),
+    coinPickups: ecsWorld.with("coinPickup", "transform", "appearance", "physics", "movementDirection"),
     physicsBodies: ecsWorld.with("transform", "physics", "movementDirection"),
     renderables: ecsWorld.with("transform", "appearance", "renderable"),
     settings: ecsWorld.with("settingsState"),
@@ -484,6 +635,7 @@ function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
       maxTargets: 12,
       targetGrowthScoreStep: DEFAULT_TARGET_GROWTH_SCORE_STEP,
       lifeSpawnChance: 0.15,
+      coinSpawnChance: 0.15,
       startLives: 3,
       maxLives: 5,
       spawnPadding: 2.25,
@@ -501,6 +653,7 @@ function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
     maxTargets: 20,
     targetGrowthScoreStep: DEFAULT_TARGET_GROWTH_SCORE_STEP,
     lifeSpawnChance: 0.15,
+    coinSpawnChance: 0.15,
     startLives: 3,
     maxLives: 5,
     spawnPadding: 1.8,
@@ -608,11 +761,12 @@ function initializeSettingsState(savedSettings: SavedGameplaySettings): void {
 function renderLivesHud(): void {
   hudLives.replaceChildren();
   hudLives.setAttribute("aria-label", `Жизни: ${game.lives} из ${game.maxLives}`);
+  const lifeMarkup = createLifeIconSvgMarkup();
 
   for (let index = 0; index < game.maxLives; index += 1) {
     const lifeSlot = document.createElement("span");
     lifeSlot.className = "hud-life";
-    lifeSlot.textContent = "◆";
+    lifeSlot.innerHTML = lifeMarkup;
     lifeSlot.dataset.filled = index < game.lives ? "true" : "false";
     hudLives.append(lifeSlot);
   }
@@ -631,8 +785,26 @@ function pulseLivesHud(): void {
   }, HUD_LIVES_PULSE_MS);
 }
 
+function pulseCoinsHud(): void {
+  hudCoins.dataset.pulse = "true";
+
+  if (hudCoinsPulseTimeoutId !== null) {
+    window.clearTimeout(hudCoinsPulseTimeoutId);
+  }
+
+  hudCoinsPulseTimeoutId = window.setTimeout(() => {
+    delete hudCoins.dataset.pulse;
+    hudCoinsPulseTimeoutId = null;
+  }, HUD_COINS_PULSE_MS);
+}
+
 function updateHud(): void {
   hudScore.textContent = `Счет: ${game.score}`;
+  const bestScore = game.bestScore ?? 0;
+  hudBestValue.textContent = String(bestScore);
+  hudBest.setAttribute("aria-label", `Лучший счет: ${bestScore}`);
+  hudCoinsValue.textContent = String(game.coins);
+  hudCoins.setAttribute("aria-label", `Монеты: ${game.coins}`);
   renderLivesHud();
   pauseButton.textContent = game.state === "paused" ? "▶" : "II";
   pauseButton.setAttribute("aria-label", game.state === "paused" ? "Продолжить игру" : "Поставить игру на паузу");
@@ -1048,6 +1220,15 @@ function installDoubleTapZoomGuard(element: HTMLElement): void {
     };
   }
 
+  function createCoinPickupAppearance(): Appearance {
+    return {
+      shape: "circle",
+      color: "red",
+      fillStyle: "outline",
+      size: COIN_ENTITY_SIZE,
+    };
+  }
+
   function getDesiredTargetCount(score: number): number {
     const profile = getGameplayProfile();
     const startTargetCount = Math.min(profile.startTargetCount, profile.maxTargets);
@@ -1121,6 +1302,128 @@ function saveBestScore(score: number): void {
   window.localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(Math.max(0, Math.floor(score))));
 }
 
+function waitForMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function animateCount(
+  element: HTMLElement,
+  token: number,
+  to: number,
+  options: {
+    prefix?: string;
+    durationMs?: number;
+  } = {},
+): Promise<void> {
+  const prefix = options.prefix ?? "";
+  const durationMs = options.durationMs ?? 420;
+  const fromText = element.textContent?.replace(/[^\d-]/g, "") ?? "0";
+  const from = Number(fromText) || 0;
+
+  if (from === to) {
+    element.textContent = `${prefix}${to}`;
+    return;
+  }
+
+  const startTime = performance.now();
+
+  await new Promise<void>((resolve) => {
+    const tick = (now: number) => {
+      if (token !== resultsAnimationToken) {
+        resolve();
+        return;
+      }
+
+      const progress = Math.min(1, (now - startTime) / durationMs);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(from + (to - from) * eased);
+      element.textContent = `${prefix}${value}`;
+
+      if (progress < 1) {
+        window.requestAnimationFrame(tick);
+      } else {
+        resolve();
+      }
+    };
+
+    window.requestAnimationFrame(tick);
+  });
+}
+
+function resetResultsScreen(): void {
+  resultsAnimationToken += 1;
+  resultsScreen.hidden = true;
+  resultsBurst.replaceChildren();
+  resultsBaseRow.classList.remove("is-visible");
+  resultsCoinsRow.classList.remove("is-visible");
+  resultsBonusRow.classList.remove("is-visible");
+  resultsFinalCard.classList.remove("is-visible");
+  resultsMeta.classList.remove("is-visible");
+  resultsBaseValue.textContent = "0";
+  resultsCoinsValue.textContent = "0";
+  resultsBonusValue.textContent = "+0";
+  resultsFinalValue.textContent = "0";
+  resultsBestValue.textContent = "0";
+  resultsRecordBadge.hidden = true;
+}
+
+function launchCoinBurst(): void {
+  resultsBurst.replaceChildren();
+
+  for (let index = 0; index < 8; index += 1) {
+    const particle = document.createElement("span");
+    particle.className = "results-burst-particle";
+    const angle = (Math.PI * 2 * index) / 8;
+    const distance = 30 + (index % 2) * 16;
+    particle.style.setProperty("--burst-x", `${Math.cos(angle) * distance}px`);
+    particle.style.setProperty("--burst-y", `${Math.sin(angle) * distance}px`);
+    particle.style.animationDelay = `${index * 20}ms`;
+    resultsBurst.append(particle);
+  }
+}
+
+async function playResultsScreenAnimation(): Promise<void> {
+  const token = ++resultsAnimationToken;
+  const coinBonus = game.lastRoundCoinBonus;
+  const bestScore = game.lastRoundBestScore ?? game.lastRoundFinalScore;
+
+  resultsScreen.hidden = false;
+  resultsBaseValue.textContent = String(game.lastRoundBaseScore);
+  resultsCoinsValue.textContent = String(game.coins);
+  resultsBonusValue.textContent = "+0";
+  resultsFinalValue.textContent = "0";
+  resultsBestValue.textContent = String(bestScore);
+  resultsRecordBadge.hidden = true;
+
+  resultsBaseRow.classList.add("is-visible");
+  await waitForMs(180);
+  if (token !== resultsAnimationToken) return;
+
+  resultsCoinsRow.classList.add("is-visible");
+  await waitForMs(180);
+  if (token !== resultsAnimationToken) return;
+
+  resultsBonusRow.classList.add("is-visible");
+  launchCoinBurst();
+  await animateCount(resultsBonusValue, token, coinBonus, {
+    prefix: "+",
+    durationMs: Math.max(280, Math.min(560, 220 + game.coins * 40)),
+  });
+  if (token !== resultsAnimationToken) return;
+
+  resultsFinalCard.classList.add("is-visible");
+  await animateCount(resultsFinalValue, token, game.lastRoundFinalScore, {
+    durationMs: Math.max(420, Math.min(760, 360 + game.lastRoundFinalScore * 12)),
+  });
+  if (token !== resultsAnimationToken) return;
+
+  resultsMeta.classList.add("is-visible");
+  resultsBestValue.textContent = String(bestScore);
+  resultsRecordBadge.hidden = !game.lastGameOverWasNewBest;
+}
+
 function continueEntryOverlayFlow(): void {
   if (!areRulesAccepted()) {
     startOnboarding();
@@ -1142,6 +1445,7 @@ function showOnboardingOverlay(): void {
     tips: GAME_RULES,
     primaryLabel: "Понятно",
     secondaryLabel: null,
+    tertiaryLabel: null,
     installButton: null,
     footerPrompt: null,
   });
@@ -1149,12 +1453,13 @@ function showOnboardingOverlay(): void {
 
 function renderOverlay(model: {
   layout: "modal" | "sheet";
-  variant: "default" | "ios-hint" | "record";
+  variant: "default" | "ios-hint" | "record" | "results" | "results-record";
   title: string;
   message: string;
   tips: string[];
   primaryLabel: string;
   secondaryLabel: string | null;
+  tertiaryLabel: string | null;
   installButton: { label: string } | null;
   footerPrompt: PwaInlineInstallPrompt | null;
 }): void {
@@ -1162,10 +1467,14 @@ function renderOverlay(model: {
   overlay.dataset.variant = model.variant;
   overlayTitle.textContent = model.title;
   overlayMessage.textContent = model.message;
+  overlayMessage.hidden = model.message.length === 0;
+  resetResultsScreen();
   setOverlayTips(model.tips);
   overlayPrimaryButton.textContent = model.primaryLabel;
   overlaySecondaryButton.textContent = model.secondaryLabel ?? "";
   overlaySecondaryButton.hidden = model.secondaryLabel === null;
+  overlayTertiaryButton.textContent = model.tertiaryLabel ?? "";
+  overlayTertiaryButton.hidden = model.tertiaryLabel === null;
   overlayInstallButton.textContent = model.installButton?.label ?? "";
   overlayInstallButton.hidden = model.installButton === null;
   overlayFooterMessage.textContent = model.footerPrompt?.message ?? "";
@@ -1173,6 +1482,7 @@ function renderOverlay(model: {
   overlayFooter.hidden = model.footerPrompt === null;
   overlayPrimaryButton.disabled = false;
   overlaySecondaryButton.disabled = false;
+  overlayTertiaryButton.disabled = false;
   overlayInstallButton.disabled = false;
   overlayFooterButton.disabled = false;
   overlay.classList.add("visible");
@@ -1190,29 +1500,27 @@ function showPauseOverlay(autoPaused: boolean): void {
     tips: GAME_RULES,
     primaryLabel: "Продолжить",
     secondaryLabel: "Настройки",
+    tertiaryLabel: "Начать заново",
     installButton: installButtonState.visible ? { label: installButtonState.label } : null,
     footerPrompt: null,
   });
 }
 
 function showGameOverOverlay(): void {
-  const previousBestLabel = game.previousBestScoreBeforeGameOver === null
-    ? ""
-    : `\nПредыдущий рекорд: ${game.previousBestScoreBeforeGameOver}`;
   overlayMode = "gameOver";
   renderOverlay({
     layout: "modal",
-    variant: game.lastGameOverWasNewBest ? "record" : "default",
-    title: "Игра окончена",
-    message: game.lastGameOverWasNewBest
-      ? `Счет: ${game.score}\nНовый рекорд!${previousBestLabel}`
-      : `Счет: ${game.score}`,
+    variant: game.lastGameOverWasNewBest ? "results-record" : "results",
+    title: "Результаты",
+    message: "",
     tips: [],
     primaryLabel: "Начать заново",
     secondaryLabel: null,
+    tertiaryLabel: null,
     installButton: null,
     footerPrompt: game.gameOverInstallPrompt,
   });
+  void playResultsScreenAnimation();
 }
 
 function hideOverlay(): void {
@@ -1220,12 +1528,16 @@ function hideOverlay(): void {
   delete overlay.dataset.layout;
   delete overlay.dataset.variant;
   setOverlayTips([]);
+  overlayMessage.hidden = false;
   overlayPrimaryButton.disabled = false;
   overlaySecondaryButton.disabled = false;
+  overlayTertiaryButton.disabled = false;
   overlayInstallButton.disabled = false;
   overlayFooterButton.disabled = false;
+  overlayTertiaryButton.hidden = true;
   overlayInstallButton.hidden = true;
   overlayFooter.hidden = true;
+  resetResultsScreen();
   overlay.classList.remove("visible");
   overlay.setAttribute("aria-hidden", "true");
 }
@@ -1274,6 +1586,7 @@ function showExternalOverlay(model: PwaInstallOverlayModel): void {
     clearActiveTouchInputs();
     renderOverlay({
       ...createPwaOverlayViewModel(model),
+      tertiaryLabel: null,
       installButton: null,
       footerPrompt: null,
     });
@@ -1288,6 +1601,7 @@ function showExternalOverlay(model: PwaInstallOverlayModel): void {
   clearActiveTouchInputs();
   renderOverlay({
     ...createPwaOverlayViewModel(model),
+    tertiaryLabel: null,
     installButton: null,
     footerPrompt: null,
   });
@@ -1587,6 +1901,15 @@ function togglePauseGame(): void {
     return false;
   }
 
+  function hasCoinPickup(): boolean {
+    for (const entity of game.queries.coinPickups) {
+      void entity;
+      return true;
+    }
+
+    return false;
+  }
+
   function getEntityById(entityId: EntityId): InteractiveEntity | null {
     for (const entity of game.ecsWorld.with("transform", "appearance", "physics", "movementDirection")) {
       if (entity.id === entityId) return entity;
@@ -1641,22 +1964,29 @@ function togglePauseGame(): void {
   }
 
   function createFigureEntity(options: {
-    role: "player" | "target" | "lifePickup";
+    role: "player" | "target" | "lifePickup" | "coinPickup";
     appearance?: Appearance | null;
     safeForAppearance?: Appearance | null;
     spawnPadding?: number;
   }): GameEntity {
     const isPlayer = options.role === "player";
     const isLifePickup = options.role === "lifePickup";
+    const isCoinPickup = options.role === "coinPickup";
     const profile = getGameplayProfile();
     const spawnPadding = options.spawnPadding ?? profile.spawnPadding;
     const nextAppearance: Appearance = options.appearance ?? {
-      ...(isLifePickup ? createLifePickupAppearance() : createEntityProperties(options.safeForAppearance ?? null)),
-      size: isLifePickup ? LIFE_ENTITY_SIZE : ENTITY_SIZE,
+      ...(
+        isLifePickup
+          ? createLifePickupAppearance()
+          : isCoinPickup
+            ? createCoinPickupAppearance()
+            : createEntityProperties(options.safeForAppearance ?? null)
+      ),
+      size: isLifePickup ? LIFE_ENTITY_SIZE : isCoinPickup ? COIN_ENTITY_SIZE : ENTITY_SIZE,
     };
     const initialDirection = getRandomDirection();
 
-    const entity: InteractiveEntity & ({ player: true } | { target: true } | { lifePickup: true }) = {
+    const entity: InteractiveEntity & ({ player: true } | { target: true } | { lifePickup: true } | { coinPickup: true }) = {
       id: game.nextEntityId++,
       transform: { x: 0, y: 0, angle: 0 },
       appearance: nextAppearance,
@@ -1666,7 +1996,7 @@ function togglePauseGame(): void {
       },
       movementDirection: initialDirection,
       renderable: true,
-      ...(isPlayer ? { player: true } : isLifePickup ? { lifePickup: true } : { target: true }),
+      ...(isPlayer ? { player: true } : isLifePickup ? { lifePickup: true } : isCoinPickup ? { coinPickup: true } : { target: true }),
     };
 
     const spawn = findSpawnPosition({
@@ -1781,9 +2111,13 @@ function togglePauseGame(): void {
 
       const targetEntity = entityA.target ? entityA : entityB.target ? entityB : null;
       const lifeEntity = entityA.lifePickup ? entityA : entityB.lifePickup ? entityB : null;
-      if (!targetEntity && !lifeEntity) continue;
+      const coinEntity = entityA.coinPickup ? entityA : entityB.coinPickup ? entityB : null;
+      if (!targetEntity && !lifeEntity && !coinEntity) continue;
 
-      const pairKey = `${playerEntity.id}:${targetEntity?.id ?? `life:${lifeEntity?.id ?? "unknown"}`}`;
+      const pairKey = `${playerEntity.id}:${
+        targetEntity?.id
+        ?? (lifeEntity ? `life:${lifeEntity.id}` : coinEntity ? `coin:${coinEntity.id}` : "unknown")
+      }`;
       if (uniquePairs.has(pairKey)) continue;
 
       uniquePairs.add(pairKey);
@@ -1802,6 +2136,15 @@ function togglePauseGame(): void {
           type: "player-life",
           playerId: playerEntity.id,
           lifeId: lifeEntity.id,
+        });
+        continue;
+      }
+
+      if (coinEntity) {
+        game.queues.collisionEvents.push({
+          type: "player-coin",
+          playerId: playerEntity.id,
+          coinId: coinEntity.id,
         });
       }
     }
@@ -1822,6 +2165,15 @@ function togglePauseGame(): void {
           type: "collect-life",
           playerId: collision.playerId,
           lifeId: collision.lifeId,
+        });
+        continue;
+      }
+
+      if (collision.type === "player-coin") {
+        game.queues.gameplay.push({
+          type: "collect-coin",
+          playerId: collision.playerId,
+          coinId: collision.coinId,
         });
         continue;
       }
@@ -1881,6 +2233,10 @@ function togglePauseGame(): void {
         if (!hasLifePickup() && Math.random() < getGameplayProfile().lifeSpawnChance) {
           game.queues.spawns.push({ type: "spawn-life" });
         }
+
+        if (!hasCoinPickup() && Math.random() < getGameplayProfile().coinSpawnChance) {
+          game.queues.spawns.push({ type: "spawn-coin" });
+        }
       }
 
       if (command.type === "lose-life") {
@@ -1914,16 +2270,33 @@ function togglePauseGame(): void {
         updateHud();
       }
 
+      if (command.type === "collect-coin") {
+        if (game.state !== "playing") continue;
+
+        const coinEntity = getEntityById(command.coinId);
+        if (!coinEntity?.coinPickup) continue;
+
+        destroyFigureEntity(coinEntity);
+        game.coins += 1;
+        pulseCoinsHud();
+        updateHud();
+      }
+
       if (command.type === "game-over") {
         const previousBestScore = game.bestScore;
+        const finalScore = game.score + game.coins * COIN_BONUS_MULTIPLIER;
         const isFirstBestScore = previousBestScore === null;
-        const isNewBestScore = previousBestScore !== null && game.score > previousBestScore;
+        const isNewBestScore = previousBestScore !== null && finalScore > previousBestScore;
 
         if (isFirstBestScore || isNewBestScore) {
-          game.bestScore = game.score;
-          saveBestScore(game.score);
+          game.bestScore = finalScore;
+          saveBestScore(finalScore);
         }
 
+        game.lastRoundBaseScore = game.score;
+        game.lastRoundCoinBonus = game.coins * COIN_BONUS_MULTIPLIER;
+        game.lastRoundFinalScore = finalScore;
+        game.lastRoundBestScore = isFirstBestScore ? finalScore : Math.max(previousBestScore ?? 0, finalScore);
         game.lastGameOverWasNewBest = isNewBestScore;
         game.previousBestScoreBeforeGameOver = isNewBestScore ? previousBestScore : null;
         game.gameOverInstallPrompt = pwa.consumeGameOverInstallPrompt();
@@ -1988,9 +2361,17 @@ function togglePauseGame(): void {
         continue;
       }
 
-      if (!hasLifePickup()) {
+      if (request.type === "spawn-life" && !hasLifePickup()) {
         createFigureEntity({
           role: "lifePickup",
+          spawnPadding: getGameplayProfile().safeSpawnPadding,
+        });
+        continue;
+      }
+
+      if (request.type === "spawn-coin" && !hasCoinPickup()) {
+        createFigureEntity({
+          role: "coinPickup",
           spawnPadding: getGameplayProfile().safeSpawnPadding,
         });
       }
@@ -2033,42 +2414,77 @@ function togglePauseGame(): void {
   }
 
   function drawLifePickup(size: number): void {
-    const radius = size * SCALE * 0.96;
-    const crossSize = radius * 0.34;
+    const unitScale = (size * SCALE * 0.96) / 10;
+    const diamondPoints = getLifeDiamondPoints(unitScale);
+    const crossSegments = getLifeCrossSegments(unitScale);
 
     ctx.beginPath();
-    ctx.moveTo(0, -radius);
-    ctx.lineTo(radius, 0);
-    ctx.lineTo(0, radius);
-    ctx.lineTo(-radius, 0);
+    ctx.moveTo(diamondPoints[0]!.x, diamondPoints[0]!.y);
+    for (let index = 1; index < diamondPoints.length; index += 1) {
+      const point = diamondPoints[index]!;
+      ctx.lineTo(point.x, point.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    for (const segment of crossSegments) {
+      ctx.beginPath();
+      ctx.moveTo(segment.from.x, segment.from.y);
+      ctx.lineTo(segment.to.x, segment.to.y);
+      ctx.stroke();
+    }
+  }
+
+  function drawCoinPickup(size: number): void {
+    const unitScale = (size * SCALE * 1.05) / 10;
+    const hexagonPoints = getCoinHexagonPoints(unitScale);
+    const spokes = getCoinSpokes(unitScale);
+
+    ctx.beginPath();
+    for (let index = 0; index < hexagonPoints.length; index += 1) {
+      const point = hexagonPoints[index]!;
+      if (index === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
+      }
+    }
     ctx.closePath();
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(-crossSize, 0);
-    ctx.lineTo(crossSize, 0);
-    ctx.moveTo(0, -crossSize);
-    ctx.lineTo(0, crossSize);
+    ctx.arc(0, 0, getCoinInnerRadius(unitScale), 0, Math.PI * 2);
     ctx.stroke();
+
+    for (const spoke of spokes) {
+      ctx.beginPath();
+      ctx.moveTo(spoke.from.x, spoke.from.y);
+      ctx.lineTo(spoke.to.x, spoke.to.y);
+      ctx.stroke();
+    }
   }
 
   function drawEntity(entity: RenderableEntity): void {
     const { x, y } = worldToCanvas(entity.transform.x, entity.transform.y);
-    const color = entity.lifePickup ? "#ffd166" : COLOR_MAP[entity.appearance.color];
+    const color = entity.lifePickup ? LIFE_COLOR : entity.coinPickup ? COIN_COLOR : COLOR_MAP[entity.appearance.color];
     const isInvulnerablePlayer = entity.player && isDamageInvulnerabilityActive();
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(-entity.transform.angle);
-    ctx.lineWidth = entity.player ? 4.5 : entity.lifePickup ? 2.8 : 2.2;
+    ctx.lineWidth = entity.player ? 4.5 : entity.lifePickup ? 2.8 : entity.coinPickup ? 2.4 : 2.2;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.setLineDash(entity.lifePickup ? [] : entity.appearance.fillStyle === "dashed" ? [9, 6] : []);
+    ctx.setLineDash(entity.lifePickup || entity.coinPickup ? [] : entity.appearance.fillStyle === "dashed" ? [9, 6] : []);
 
     if (entity.lifePickup) {
-      ctx.shadowColor = "rgba(255, 209, 102, 0.34)";
+      ctx.shadowColor = "rgba(184, 148, 255, 0.4)";
       ctx.shadowBlur = 14;
       drawLifePickup(entity.appearance.size);
+    } else if (entity.coinPickup) {
+      ctx.shadowColor = "rgba(255, 209, 102, 0.46)";
+      ctx.shadowBlur = 18;
+      drawCoinPickup(entity.appearance.size);
     } else {
       traceShape(entity.appearance.shape, entity.appearance.size);
 
@@ -2156,30 +2572,32 @@ function togglePauseGame(): void {
         bodyIdA === playerBodyId ? bodyIdB : bodyIdB === playerBodyId ? bodyIdA : null;
       if (otherBodyId === null) return false;
 
+      const otherEntity = getEntityByBodyId(otherBodyId);
+      if (!otherEntity) return false;
+
       if (isDamageInvulnerabilityActive()) {
-        return true;
+        return !!(otherEntity.target || otherEntity.lifePickup || otherEntity.coinPickup);
       }
 
-      for (const lifePickup of game.queries.lifePickups) {
-        if (lifePickup.physics.bodyId === otherBodyId) {
-          return true;
-        }
-      }
-
-      for (const target of game.queries.targets) {
-        if (target.physics.bodyId === otherBodyId) {
-          return areAllPropertiesDifferent(player.appearance, target.appearance);
-        }
+      if (otherEntity.lifePickup || otherEntity.coinPickup) return true;
+      const otherTarget = otherEntity.target ? otherEntity : null;
+      if (otherTarget) {
+        return areAllPropertiesDifferent(player.appearance!, otherTarget.appearance!);
       }
       return false;
     });
     clearGameplayEntities();
     updateGameplayProfile();
     game.score = 0;
+    game.coins = 0;
     game.lives = getGameplayProfile().startLives;
     game.maxLives = getGameplayProfile().maxLives;
     game.lastGameOverWasNewBest = false;
     game.previousBestScoreBeforeGameOver = null;
+    game.lastRoundBaseScore = 0;
+    game.lastRoundCoinBonus = 0;
+    game.lastRoundFinalScore = 0;
+    game.lastRoundBestScore = null;
     game.gameOverInstallPrompt = null;
     game.nextEntityId = 1;
     game.accumulator = 0;
@@ -2188,6 +2606,11 @@ function togglePauseGame(): void {
     game.queues = createQueues();
     game.playerBoostExpiresAt = 0;
     game.damageInvulnerabilityExpiresAt = 0;
+    delete hudCoins.dataset.pulse;
+    if (hudCoinsPulseTimeoutId !== null) {
+      window.clearTimeout(hudCoinsPulseTimeoutId);
+      hudCoinsPulseTimeoutId = null;
+    }
     clearInputState();
     clearActiveTouchInputs();
     hideOverlay();
@@ -2394,6 +2817,16 @@ function togglePauseGame(): void {
 
     if (overlayMode === "pause") {
       openSettingsListener?.();
+      return;
+    }
+
+    restartGame();
+  });
+
+  overlayTertiaryButton.addEventListener("click", () => {
+    retryFullscreenOnUserGesture();
+
+    if (overlayMode !== "pause") {
       return;
     }
 
