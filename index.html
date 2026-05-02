@@ -355,12 +355,17 @@
 
       .settings-card {
         width: min(100%, 520px);
+        max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 24px);
         padding: 28px 24px;
         border: 1px solid var(--panel-border);
         border-radius: 24px;
         background: var(--panel);
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
         backdrop-filter: blur(12px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        overscroll-behavior: contain;
       }
 
       .settings-title {
@@ -379,6 +384,10 @@
       .settings-form {
         display: grid;
         gap: 18px;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 2px;
       }
 
       .settings-slider {
@@ -410,6 +419,10 @@
         flex-wrap: wrap;
         gap: 12px;
         margin-top: 28px;
+        padding-top: 18px;
+        background: linear-gradient(180deg, rgba(8, 12, 20, 0), rgba(8, 12, 20, 0.96) 26%);
+        position: sticky;
+        bottom: 0;
       }
 
       .settings-button {
