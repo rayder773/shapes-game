@@ -11,12 +11,22 @@ type SliderRefs = {
   value: HTMLSpanElement;
 };
 
-const sliderDefinitions: Array<{ field: keyof GameplaySettingsValues; label: string }> = [
-  { field: "targetSpeed", label: "Скорость фигур" },
-  { field: "playerSpeed", label: "Скорость игрока" },
-  { field: "playerBoostSpeed", label: "Скорость скачка" },
-  { field: "maxTargets", label: "Максимум фигур" },
-  { field: "targetGrowthScoreStep", label: "Шаг увеличения фигур" },
+const sliderDefinitions: Array<{
+  field: keyof GameplaySettingsValues;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  formatValue?: (value: number) => string;
+}> = [
+  { field: "targetSpeed", label: "Скорость фигур", min: 0, max: 30, step: 1 },
+  { field: "playerSpeed", label: "Скорость игрока", min: 0, max: 30, step: 1 },
+  { field: "playerBoostSpeed", label: "Скорость скачка", min: 0, max: 30, step: 1 },
+  { field: "maxTargets", label: "Максимум фигур", min: 0, max: 30, step: 1 },
+  { field: "targetGrowthScoreStep", label: "Шаг увеличения фигур", min: 0, max: 30, step: 1 },
+  { field: "lifeSpawnChancePercent", label: "Шанс появления жизни", min: 0, max: 100, step: 1, formatValue: (value) => `${value}%` },
+  { field: "startLives", label: "Начальное количество жизней", min: 1, max: 10, step: 1 },
+  { field: "maxLives", label: "Максимум жизней", min: 1, max: 10, step: 1 },
 ];
 
 export type SettingsPageController = {
@@ -68,9 +78,9 @@ export function createSettingsPage(options: SettingsPageOptions): SettingsPageCo
 
     const input = document.createElement("input");
     input.type = "range";
-    input.min = "0";
-    input.max = "30";
-    input.step = "1";
+    input.min = String(sliderDefinition.min);
+    input.max = String(sliderDefinition.max);
+    input.step = String(sliderDefinition.step);
     input.addEventListener("input", () => {
       options.onValueChange(sliderDefinition.field, Number(input.value));
     });
@@ -111,7 +121,9 @@ export function createSettingsPage(options: SettingsPageOptions): SettingsPageCo
 
         const value = state.draft[sliderDefinition.field];
         refs.input.value = String(value);
-        refs.value.textContent = String(value);
+        refs.value.textContent = sliderDefinition.formatValue
+          ? sliderDefinition.formatValue(value)
+          : String(value);
       }
     },
     setVisible(visible) {
