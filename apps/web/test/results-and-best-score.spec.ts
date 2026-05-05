@@ -7,6 +7,22 @@ import {
   snapshot,
 } from "./helpers";
 
+async function hitUnsafeTargetUntilResolved() {
+  const api = window.__ANTI_MATCH_TEST__!;
+  const state = snapshot();
+  const player = state.entities.find((entity) => entity.player)!;
+  const target = api.getTargets().find((entity) =>
+    entity.appearance!.shape === player.appearance!.shape
+    || entity.appearance!.color === player.appearance!.color
+    || entity.appearance!.fillStyle === player.appearance!.fillStyle,
+  );
+
+  expect(target).toBeDefined();
+  const previousLives = state.lives;
+  pointerDownCanvasWorld(target!.transform!.x, target!.transform!.y);
+  await advanceUntil(() => snapshot().lives === Math.max(0, previousLives - 1) || snapshot().state === "gameOver", { maxFrames: 260 });
+}
+
 describe("results and best score", () => {
   test("game over computes final score, shows results overlay and persists best score", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
@@ -14,26 +30,9 @@ describe("results and best score", () => {
     setDeterministicRandom(new Array(400).fill(0));
     await bootApp("/shapes-game/");
 
-    const api = window.__ANTI_MATCH_TEST__!;
-
-    const hitUnsafeTarget = async () => {
-      const state = snapshot();
-      const player = state.entities.find((entity) => entity.player)!;
-      const target = api.getTargets().find((entity) =>
-        entity.appearance!.shape === player.appearance!.shape
-        || entity.appearance!.color === player.appearance!.color
-        || entity.appearance!.fillStyle === player.appearance!.fillStyle,
-      );
-
-      expect(target).toBeDefined();
-      const previousLives = state.lives;
-      pointerDownCanvasWorld(target!.transform!.x, target!.transform!.y);
-      await advanceUntil(() => snapshot().lives === Math.max(0, previousLives - 1) || snapshot().state === "gameOver", { maxFrames: 260 });
-    };
-
-    await hitUnsafeTarget();
-    await hitUnsafeTarget();
-    await hitUnsafeTarget();
+    await hitUnsafeTargetUntilResolved();
+    await hitUnsafeTargetUntilResolved();
+    await hitUnsafeTargetUntilResolved();
     await advanceUntil(() => snapshot().state === "gameOver", { maxFrames: 260 });
 
     const state = snapshot();
@@ -57,5 +56,15 @@ describe("results and best score", () => {
     await bootApp("/shapes-game/");
 
     expect(document.getElementById("hud-best-value")?.textContent).toBe("0");
+
+    await hitUnsafeTargetUntilResolved();
+    await hitUnsafeTargetUntilResolved();
+    await hitUnsafeTargetUntilResolved();
+    await advanceUntil(() => snapshot().state === "gameOver", { maxFrames: 260 });
+
+    const state = snapshot();
+    expect(state.lastRoundBestScore).toBe(state.lastRoundFinalScore);
+    expect(document.getElementById("results-best-value")?.textContent).toBe(String(state.lastRoundFinalScore));
+    expect(window.localStorage.getItem("shapes-game.bestScore")).toBe(String(state.lastRoundFinalScore));
   });
 });
