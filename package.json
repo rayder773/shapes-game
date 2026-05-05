@@ -1,32 +1,17 @@
 {
-  "name": "pixi-dsl-physics",
+  "name": "shapes-game",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "pwa:preview": "npm run build && vite preview --host 0.0.0.0",
-    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "miniplex": "^2.0.0",
-    "planck": "^1.4.2"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@stylistic/eslint-plugin": "^5.6.1",
-    "@types/node": "^24.10.1",
-    "eslint": "^9.39.1",
-    "jsdom": "^26.1.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.4",
-    "vite": "^7.1.12",
-    "vite-plugin-pwa": "^1.1.0",
-    "vitest": "^3.2.4"
+    "dev:web": "npm run dev --workspace web",
+    "dev:api": "npm run dev --workspace api",
+    "build": "npm run build --workspace web && npm run build --workspace api",
+    "build:web": "npm run build --workspace web",
+    "build:api": "npm run build --workspace api",
+    "test": "npm run test --workspace web",
+    "test:web": "npm run test --workspace web",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
   }
 }
