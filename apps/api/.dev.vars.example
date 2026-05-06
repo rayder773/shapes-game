@@ -1,0 +1,6 @@
+# Copy this file to .dev.vars for local Wrangler development.
+# Do not commit .dev.vars.
+
+APP_ENV=development
+ANALYTICS_COOKIE_NAME=sg_visitor_id
+ANALYTICS_MAX_BATCH_SIZE=50

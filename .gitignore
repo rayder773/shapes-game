@@ -1,3 +1,8 @@
 node_modules
 dist
 apps/*/dist
+apps/*/.wrangler
+apps/*/.dev.vars*
+apps/*/.env*
+!apps/*/.dev.vars*.example
+!apps/*/.env*.example

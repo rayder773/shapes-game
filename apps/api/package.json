@@ -4,12 +4,23 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsc --watch --preserveWatchOutput -p tsconfig.json",
+    "dev": "wrangler dev --local",
+    "dev:production": "wrangler dev --local --env production",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "typecheck": "tsc -p tsconfig.json",
+    "deploy:production": "wrangler deploy --env production",
+    "db:migrations:create": "wrangler d1 migrations create shapes-game-analytics-dev",
+    "db:migrations:list:local": "wrangler d1 migrations list shapes-game-analytics-dev --local",
+    "db:migrations:apply:local": "wrangler d1 migrations apply shapes-game-analytics-dev --local",
+    "db:migrations:list:production": "wrangler d1 migrations list shapes-game-analytics --env production --remote",
+    "db:migrations:apply:production": "wrangler d1 migrations apply shapes-game-analytics --env production --remote"
+  },
+  "dependencies": {
+    "hono": "^4.10.7"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "typescript": "^5.9.3"
+    "@cloudflare/workers-types": "^4.20260504.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.50.0"
   }
 }
