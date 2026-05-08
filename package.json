@@ -8,6 +8,7 @@
     "dev:web": "npm run dev --workspace web",
     "dev:api": "npm run dev --workspace api",
     "dev:api-panel": "npm run dev --workspace api-dev-panel",
+    "dev:analytics": "/bin/sh -c 'npm run dev:api & npm run dev:api-panel & wait'",
     "build": "npm run build --workspace web && npm run build --workspace api",
     "build:web": "npm run build --workspace web",
     "build:api": "npm run build --workspace api",

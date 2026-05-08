@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { registerDevRoutes } from "./dev";
+import { registerDevControllers } from "./dev";
 
 type Bindings = {
   DB: D1Database;
@@ -32,7 +32,7 @@ app.get("/health", (context) => {
   });
 });
 
-registerDevRoutes(app);
+registerDevControllers(app);
 
 app.post("/analytics/events", async (context) => {
   let body: unknown;
