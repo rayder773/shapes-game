@@ -41,6 +41,8 @@ type VisitorLookupRow = {
 };
 
 const defaultMaxBatchSize = 50;
+const defaultEventsPageSize = 100;
+const maxEventsPageSize = 200;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -87,6 +89,8 @@ app.get("/admin/api/visitors", async (context) => {
 
 app.get("/admin/api/visitors/:visitorId/events", async (context) => {
   const visitorId = context.req.param("visitorId");
+  const limit = getEventsPageLimit(context.req.query("limit"));
+  const beforeId = getEventsBeforeId(context.req.query("before_id"));
   const visitor = await context.env.DB.prepare("SELECT id FROM visitors WHERE id = ?")
     .bind(visitorId)
     .first<VisitorLookupRow>();
@@ -95,25 +99,35 @@ app.get("/admin/api/visitors/:visitorId/events", async (context) => {
     return context.json({ ok: false, error: "visitor_not_found" }, 404);
   }
 
-  const events = await context.env.DB.prepare(
-    `SELECT id, visitor_id, type, payload, client_created_at
-    FROM events
-    WHERE visitor_id = ?
-    ORDER BY id DESC`,
-  )
-    .bind(visitorId)
+  const eventsQuery = beforeId === null
+    ? `SELECT id, visitor_id, type, payload, client_created_at
+      FROM events
+      WHERE visitor_id = ?
+      ORDER BY id DESC
+      LIMIT ?`
+    : `SELECT id, visitor_id, type, payload, client_created_at
+      FROM events
+      WHERE visitor_id = ? AND id < ?
+      ORDER BY id DESC
+      LIMIT ?`;
+  const events = await context.env.DB.prepare(eventsQuery)
+    .bind(...(beforeId === null ? [visitorId, limit + 1] : [visitorId, beforeId, limit + 1]))
     .all<EventRow>();
+  const eventRows = events.results ?? [];
+  const pageRows = eventRows.slice(0, limit);
 
   return context.json({
     ok: true,
     visitor_id: visitorId,
-    events: (events.results ?? []).map((event) => ({
+    events: pageRows.map((event) => ({
       id: event.id,
       visitor_id: event.visitor_id,
       type: event.type,
       payload: parseEventPayload(event.payload),
       client_created_at: event.client_created_at,
     })),
+    next_before_id: eventRows.length > limit ? pageRows.at(-1)?.id ?? null : null,
+    has_more: eventRows.length > limit,
   });
 });
 
@@ -178,6 +192,25 @@ function getMaxBatchSize(env: Bindings): number {
   }
 
   return maxBatchSize;
+}
+
+function getEventsPageLimit(value: string | undefined): number {
+  const limit = Number(value);
+
+  if (!Number.isInteger(limit) || limit < 1) {
+    return defaultEventsPageSize;
+  }
+
+  return Math.min(limit, maxEventsPageSize);
+}
+
+function getEventsBeforeId(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const beforeId = Number(value);
+  return Number.isInteger(beforeId) && beforeId > 0 ? beforeId : null;
 }
 
 function parseEvents(
