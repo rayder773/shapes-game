@@ -14,5 +14,5 @@ name = "shapes-game-api"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "shapes-game-analytics"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "9e64b84d-4139-48d1-8393-905ac9e08ade"
 migrations_dir = "migrations"

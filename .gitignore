@@ -6,3 +6,4 @@ apps/*/.dev.vars*
 apps/*/.env*
 !apps/*/.dev.vars*.example
 !apps/*/.env*.example
+!apps/*/.env.production

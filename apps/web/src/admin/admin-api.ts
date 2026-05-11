@@ -24,8 +24,14 @@ type EventsResponse = {
   events?: EventRecord[];
 };
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
+
+function apiUrl(path: string): string {
+  return `${apiBaseUrl}${path}`;
+}
+
 export async function loadVisitors(): Promise<VisitorRecord[]> {
-  const response = await fetch("/admin/api/visitors");
+  const response = await fetch(apiUrl("/admin/api/visitors"));
   const payload = (await response.json()) as VisitorsResponse;
 
   if (!response.ok || !payload.ok || !payload.visitors) {
@@ -36,7 +42,7 @@ export async function loadVisitors(): Promise<VisitorRecord[]> {
 }
 
 export async function loadVisitorEvents(visitorId: string): Promise<EventRecord[]> {
-  const response = await fetch(`/admin/api/visitors/${encodeURIComponent(visitorId)}/events`);
+  const response = await fetch(apiUrl(`/admin/api/visitors/${encodeURIComponent(visitorId)}/events`));
   const payload = (await response.json()) as EventsResponse;
 
   if (!response.ok || !payload.ok || !payload.events) {
