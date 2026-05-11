@@ -1,4 +1,5 @@
-import { enterGamePage, enterSettingsPage, initializeGame, persistActiveProfileSettings, resetSettingsDraftToDefaults, setOpenSettingsListener, subscribeToSettingsState, updateSettingsDraft } from "./game.ts";
+import { createAdminPage } from "./admin/admin-page.ts";
+import { enterGamePage, enterNonGamePage, enterSettingsPage, initializeGame, persistActiveProfileSettings, resetSettingsDraftToDefaults, setOpenSettingsListener, subscribeToSettingsState, updateSettingsDraft } from "./game.ts";
 import { initializeIcons } from "./icons.ts";
 import { registerPwaServiceWorker } from "./pwa.ts";
 import { getCurrentRoute, initializeRouter, navigateToRoute, subscribeToRouteChanges, type AppRoute } from "./router.ts";
@@ -16,8 +17,9 @@ const settingsPage = createSettingsPage({
     navigateToRoute("game");
   },
 });
+const adminPage = createAdminPage();
 
-document.body.append(settingsPage.element);
+document.body.append(settingsPage.element, adminPage.element);
 initializeIcons();
 registerPwaServiceWorker();
 
@@ -31,13 +33,20 @@ setOpenSettingsListener(() => {
 
 function handleRouteChange(route: AppRoute): void {
   settingsPage.setVisible(route === "settings");
+  adminPage.setVisible(route === "admin");
+  document.body.dataset.route = route;
 
-  if (route === "settings") {
-    enterSettingsPage();
-    return;
+  switch (route) {
+    case "admin":
+      enterNonGamePage();
+      return;
+    case "settings":
+      enterSettingsPage();
+      return;
+    case "game":
+      enterGamePage();
+      return;
   }
-
-  enterGamePage();
 }
 
 initializeGame();

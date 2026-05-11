@@ -77,6 +77,18 @@ export function registerPwaServiceWorker(): void {
     return;
   }
 
+  if (import.meta.env.DEV) {
+    void navigator.serviceWorker.getRegistrations?.().then((registrations) => {
+      const baseScope = new URL(import.meta.env.BASE_URL, window.location.origin).href;
+      for (const registration of registrations) {
+        if (registration.scope.startsWith(baseScope)) {
+          void registration.unregister();
+        }
+      }
+    });
+    return;
+  }
+
   sessionStorage.removeItem(SW_RELOAD_SESSION_KEY);
 
   let hasReloadedForControllerChange = false;

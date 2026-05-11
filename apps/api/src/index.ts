@@ -16,6 +16,26 @@ type EventInput = {
   client_created_at: string;
 };
 
+type VisitorListRow = {
+  id: string;
+  ip: string;
+  user_agent: string;
+  created_at: string;
+  events_count: number | string;
+};
+
+type EventRow = {
+  id: number;
+  visitor_id: string;
+  type: string;
+  payload: string;
+  client_created_at: string;
+};
+
+type VisitorLookupRow = {
+  id: string;
+};
+
 const defaultVisitorCookieName = "sg_visitor_id";
 const defaultMaxBatchSize = 50;
 const uuidPattern =
@@ -33,6 +53,57 @@ app.get("/health", (context) => {
 });
 
 registerDevControllers(app);
+
+app.get("/admin/api/visitors", async (context) => {
+  const visitors = await context.env.DB.prepare(
+    `SELECT visitors.id, visitors.ip, visitors.user_agent, visitors.created_at,
+      COUNT(events.id) AS events_count
+    FROM visitors
+    LEFT JOIN events ON events.visitor_id = visitors.id
+    GROUP BY visitors.id
+    ORDER BY visitors.created_at DESC`,
+  ).all<VisitorListRow>();
+
+  return context.json({
+    ok: true,
+    visitors: (visitors.results ?? []).map((visitor) => ({
+      ...visitor,
+      events_count: Number(visitor.events_count),
+    })),
+  });
+});
+
+app.get("/admin/api/visitors/:visitorId/events", async (context) => {
+  const visitorId = context.req.param("visitorId");
+  const visitor = await context.env.DB.prepare("SELECT id FROM visitors WHERE id = ?")
+    .bind(visitorId)
+    .first<VisitorLookupRow>();
+
+  if (!visitor) {
+    return context.json({ ok: false, error: "visitor_not_found" }, 404);
+  }
+
+  const events = await context.env.DB.prepare(
+    `SELECT id, visitor_id, type, payload, client_created_at
+    FROM events
+    WHERE visitor_id = ?
+    ORDER BY id DESC`,
+  )
+    .bind(visitorId)
+    .all<EventRow>();
+
+  return context.json({
+    ok: true,
+    visitor_id: visitorId,
+    events: (events.results ?? []).map((event) => ({
+      id: event.id,
+      visitor_id: event.visitor_id,
+      type: event.type,
+      payload: parseEventPayload(event.payload),
+      client_created_at: event.client_created_at,
+    })),
+  });
+});
 
 app.post("/analytics/events", async (context) => {
   let body: unknown;
@@ -196,6 +267,14 @@ function getRequestIp(request: Request): string {
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     ""
   );
+}
+
+function parseEventPayload(payload: string): unknown {
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return payload;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

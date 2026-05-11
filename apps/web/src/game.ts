@@ -2688,7 +2688,7 @@ function togglePauseGame(): void {
     continueEntryOverlayFlow();
   }
 
-  export function enterSettingsPage(): void {
+  export function enterNonGamePage(): void {
     isGameRouteActive = false;
     pwa.setGameRouteActive(false);
     setGameUiVisible(false);
@@ -2696,6 +2696,10 @@ function togglePauseGame(): void {
     if (game.state === "playing") {
       pauseGame(true);
     }
+  }
+
+  export function enterSettingsPage(): void {
+    enterNonGamePage();
   }
 
   export function enterGamePage(): void {

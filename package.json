@@ -5,6 +5,7 @@
     "apps/*"
   ],
   "scripts": {
+    "dev": "/bin/sh -c 'npm run dev:api & npm run dev:web & wait'",
     "dev:web": "npm run dev --workspace web",
     "dev:api": "npm run dev --workspace api",
     "dev:api-panel": "npm run dev --workspace api-dev-panel",
