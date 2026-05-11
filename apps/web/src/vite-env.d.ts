@@ -1,6 +1,10 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_ANALYTICS_ENDPOINT?: string;
+}
+
 type AntiMatchTestEntitySnapshot = {
   id: number;
   player?: true;

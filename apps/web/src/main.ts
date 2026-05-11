@@ -1,4 +1,5 @@
 import { createAdminPage } from "./admin/admin-page.ts";
+import { installAnalyticsLifecycleFlush } from "./analytics-client.ts";
 import { enterGamePage, enterNonGamePage, enterSettingsPage, initializeGame, persistActiveProfileSettings, resetSettingsDraftToDefaults, setOpenSettingsListener, subscribeToSettingsState, updateSettingsDraft } from "./game.ts";
 import { initializeIcons } from "./icons.ts";
 import { registerPwaServiceWorker } from "./pwa.ts";
@@ -21,6 +22,7 @@ const adminPage = createAdminPage();
 
 document.body.append(settingsPage.element, adminPage.element);
 initializeIcons();
+installAnalyticsLifecycleFlush();
 registerPwaServiceWorker();
 
 subscribeToSettingsState((state) => {
