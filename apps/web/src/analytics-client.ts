@@ -36,12 +36,14 @@ type AnalyticsClientOptions = {
   now?: () => Date;
   uuid?: () => string;
   flushBatchSize?: number;
+  flushDelayMs?: number;
   maxStoredEvents?: number;
 };
 
 const CLIENT_ID_STORAGE_KEY = "shapes-game.analytics.clientId";
 const OUTBOX_STORAGE_KEY = "shapes-game.analytics.outbox";
 const DEFAULT_FLUSH_BATCH_SIZE = 20;
+const DEFAULT_FLUSH_DELAY_MS = 3000;
 const DEFAULT_MAX_STORED_EVENTS = 100;
 
 function createUuid(): string {
@@ -104,9 +106,11 @@ export class AnalyticsClient {
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly flushBatchSize: number;
+  private readonly flushDelayMs: number;
   private readonly maxStoredEvents: number;
   private queue: AnalyticsEvent[];
   private activeFetchFlush: Promise<boolean> | null = null;
+  private scheduledFlushId: number | null = null;
 
   constructor(options: AnalyticsClientOptions = {}) {
     this.endpoint = options.endpoint?.trim() ?? "";
@@ -118,11 +122,14 @@ export class AnalyticsClient {
     this.now = options.now ?? (() => new Date());
     this.uuid = options.uuid ?? createUuid;
     this.flushBatchSize = options.flushBatchSize ?? DEFAULT_FLUSH_BATCH_SIZE;
+    this.flushDelayMs = options.flushDelayMs ?? DEFAULT_FLUSH_DELAY_MS;
     this.maxStoredEvents = options.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
     this.clientId = this.getOrCreateClientId();
     this.sessionId = this.uuid();
     this.queue = readStoredEvents(this.storage);
-    persistStoredEvents(this.storage, [], this.maxStoredEvents);
+    if (this.queue.length > 0) {
+      this.scheduleFlush();
+    }
   }
 
   startRound(): string {
@@ -137,9 +144,12 @@ export class AnalyticsClient {
       payload,
       client_created_at: this.now().toISOString(),
     });
+    this.persistQueue();
 
     if (this.queue.length >= this.flushBatchSize) {
       void this.flush();
+    } else {
+      this.scheduleFlush();
     }
   }
 
@@ -147,12 +157,18 @@ export class AnalyticsClient {
     if (!this.endpoint || this.queue.length === 0) return true;
     if (this.activeFetchFlush) return this.activeFetchFlush;
 
+    this.clearScheduledFlush();
     const batch = this.queue.splice(0, this.queue.length);
+    this.persistQueue();
     this.activeFetchFlush = this.sendWithFetch(batch).then((ok) => {
       if (!ok) {
-        this.persistFailedBatch(batch);
+        this.queue = [...batch, ...this.queue].slice(-this.maxStoredEvents);
+        this.persistQueue();
       }
       this.activeFetchFlush = null;
+      if (this.queue.length > 0) {
+        this.scheduleFlush();
+      }
       return ok;
     });
 
@@ -162,19 +178,26 @@ export class AnalyticsClient {
   flushForLifecycle(): void {
     if (!this.endpoint || this.queue.length === 0) return;
 
+    this.clearScheduledFlush();
     const batch = this.queue.splice(0, this.queue.length);
+    this.persistQueue();
     const body = JSON.stringify(this.createEnvelope(batch));
 
     if (this.transport.sendBeacon) {
       const blob = new Blob([body], { type: "text/plain" });
       if (this.transport.sendBeacon(this.endpoint, blob)) {
+        this.persistFailedBatch(batch);
         return;
       }
     }
 
+    this.persistFailedBatch(batch);
     void this.sendWithFetch(batch, true).then((ok) => {
-      if (!ok) {
-        this.persistFailedBatch(batch);
+      if (ok) {
+        this.persistQueue();
+      } else {
+        this.queue = [...batch, ...this.queue].slice(-this.maxStoredEvents);
+        this.persistQueue();
       }
     });
   }
@@ -219,6 +242,30 @@ export class AnalyticsClient {
   private persistFailedBatch(events: AnalyticsEvent[]): void {
     persistStoredEvents(this.storage, [...readStoredEvents(this.storage), ...events], this.maxStoredEvents);
   }
+
+  private persistQueue(): void {
+    persistStoredEvents(this.storage, this.queue, this.maxStoredEvents);
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushDelayMs < 1 || this.scheduledFlushId !== null) {
+      return;
+    }
+
+    this.scheduledFlushId = window.setTimeout(() => {
+      this.scheduledFlushId = null;
+      void this.flush();
+    }, this.flushDelayMs);
+  }
+
+  private clearScheduledFlush(): void {
+    if (this.scheduledFlushId === null) {
+      return;
+    }
+
+    window.clearTimeout(this.scheduledFlushId);
+    this.scheduledFlushId = null;
+  }
 }
 
 export const analyticsClient = new AnalyticsClient({
@@ -227,6 +274,10 @@ export const analyticsClient = new AnalyticsClient({
 
 export function trackAnalyticsEvent(type: AnalyticsEventType, payload: AnalyticsPayload): void {
   analyticsClient.trackAnalyticsEvent(type, payload);
+}
+
+export function flushAnalyticsEvents(): Promise<boolean> {
+  return analyticsClient.flush();
 }
 
 export function startAnalyticsRound(): string {

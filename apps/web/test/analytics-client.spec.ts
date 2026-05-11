@@ -58,15 +58,45 @@ describe("analytics client", () => {
     expect(client.getQueuedEvents()).toHaveLength(0);
   });
 
-  test("loads persisted outbox on startup and clears storage", () => {
+  test("flushes small batches after a short delay", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    const client = createClient({
+      flushDelayMs: 1000,
+      transport: {
+        fetch: fetchMock as unknown as typeof fetch,
+      },
+    });
+
+    client.trackAnalyticsEvent("game.target_consumed", { index: 1 });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(client.getQueuedEvents()).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  test("loads persisted outbox on startup and keeps storage until a confirmed flush", async () => {
     window.localStorage.setItem("shapes-game.analytics.outbox", JSON.stringify([
       createStoredEvent(1),
       createStoredEvent(2),
     ]));
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
 
-    const client = createClient();
+    const client = createClient({
+      flushDelayMs: 0,
+      transport: {
+        fetch: fetchMock as unknown as typeof fetch,
+      },
+    });
 
     expect(client.getQueuedEvents()).toHaveLength(2);
+    expect(window.localStorage.getItem("shapes-game.analytics.outbox")).not.toBeNull();
+
+    await client.flush();
+
     expect(window.localStorage.getItem("shapes-game.analytics.outbox")).toBeNull();
   });
 
@@ -109,6 +139,7 @@ describe("analytics client", () => {
     expect(sendBeacon).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(client.getQueuedEvents()).toHaveLength(0);
+    expect(readStoredEvents()).toHaveLength(1);
   });
 
   test("falls back to keepalive fetch when sendBeacon is unavailable or rejected", async () => {
@@ -127,5 +158,10 @@ describe("analytics client", () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(((fetchMock.mock.calls[0] as unknown[])[1] as RequestInit).keepalive).toBe(true);
     expect(client.getQueuedEvents()).toHaveLength(0);
+    await vi.waitFor(() => expect(readStoredEvents()).toHaveLength(0));
   });
 });
+
+function readStoredEvents(): AnalyticsEvent[] {
+  return JSON.parse(window.localStorage.getItem("shapes-game.analytics.outbox") ?? "[]") as AnalyticsEvent[];
+}

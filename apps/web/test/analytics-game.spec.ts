@@ -11,6 +11,8 @@ import {
 describe("game analytics integration", () => {
   test("queues core gameplay transition events with aggregate payloads", async () => {
     vi.stubEnv("VITE_ANALYTICS_ENDPOINT", "https://analytics.example.test/analytics/events");
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
     await bootApp("/shapes-game/");
     const { analyticsClient } = await import("../src/analytics-client.ts");
@@ -20,8 +22,13 @@ describe("game analytics integration", () => {
     click(getPauseButton());
     click(getTertiaryOverlayButton());
     await advanceFrames(2);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    const events = analyticsClient.getQueuedEvents();
+    const sentEvents = fetchMock.mock.calls.flatMap((call) => {
+      const request = (call as unknown[])[1] as RequestInit;
+      return (JSON.parse(String(request.body)) as { events: Array<{ type: string; payload: Record<string, unknown> }> }).events;
+    });
+    const events = [...sentEvents, ...analyticsClient.getQueuedEvents()];
     expect(events.map((event) => event.type)).toEqual([
       "game.round_started",
       "game.round_paused",
@@ -49,5 +56,24 @@ describe("game analytics integration", () => {
       expect(event.payload).not.toHaveProperty("color");
       expect(event.payload).not.toHaveProperty("fillStyle");
     }
+  });
+
+  test("flushes queued gameplay events when the round is paused", async () => {
+    vi.stubEnv("VITE_ANALYTICS_ENDPOINT", "https://analytics.example.test/analytics/events");
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+
+    await bootApp("/shapes-game/");
+
+    click(getPauseButton());
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const request = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
+    const body = JSON.parse(String(request.body));
+    expect(body.events.map((event: { type: string }) => event.type)).toEqual([
+      "game.round_started",
+      "game.round_paused",
+    ]);
   });
 });

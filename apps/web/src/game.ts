@@ -42,6 +42,7 @@ import {
   getLifeDiamondPoints,
 } from "./icons.ts";
 import {
+  flushAnalyticsEvents,
   getAnalyticsSessionId,
   startAnalyticsRound,
   trackAnalyticsEvent,
@@ -1594,6 +1595,7 @@ function pauseGame(autoPaused = false): void {
   trackGameplayEvent("game.round_paused", {
     auto_paused: autoPaused,
   });
+  void flushAnalyticsEvents();
 }
 
 function resumeGame(): void {
