@@ -4,8 +4,11 @@ type AdminState = {
   visitors: VisitorRecord[];
   selectedVisitorId: string | null;
   events: EventRecord[];
+  eventsNextBeforeId: number | null;
+  hasMoreEvents: boolean;
   isLoadingVisitors: boolean;
   isLoadingEvents: boolean;
+  isLoadingMoreEvents: boolean;
   deletingVisitorId: string | null;
   errorMessage: string | null;
   hasLoaded: boolean;
@@ -20,8 +23,11 @@ const state: AdminState = {
   visitors: [],
   selectedVisitorId: null,
   events: [],
+  eventsNextBeforeId: null,
+  hasMoreEvents: false,
   isLoadingVisitors: false,
   isLoadingEvents: false,
+  isLoadingMoreEvents: false,
   deletingVisitorId: null,
   errorMessage: null,
   hasLoaded: false,
@@ -61,20 +67,63 @@ export function createAdminPage(): AdminPageController {
   async function refreshEvents(): Promise<void> {
     if (!state.selectedVisitorId) {
       state.events = [];
+      state.eventsNextBeforeId = null;
+      state.hasMoreEvents = false;
       return;
     }
 
     state.isLoadingEvents = true;
+    state.isLoadingMoreEvents = false;
     state.errorMessage = null;
     render();
 
     try {
-      state.events = await loadVisitorEvents(state.selectedVisitorId);
+      const page = await loadVisitorEvents(state.selectedVisitorId);
+      state.events = page.events;
+      state.eventsNextBeforeId = page.nextBeforeId;
+      state.hasMoreEvents = page.hasMore;
     } catch (error) {
       state.errorMessage = getErrorMessage(error);
       state.events = [];
+      state.eventsNextBeforeId = null;
+      state.hasMoreEvents = false;
     } finally {
       state.isLoadingEvents = false;
+      render();
+    }
+  }
+
+  async function loadMoreEvents(): Promise<void> {
+    if (
+      !state.selectedVisitorId ||
+      !state.hasMoreEvents ||
+      state.isLoadingEvents ||
+      state.isLoadingMoreEvents ||
+      state.eventsNextBeforeId === null
+    ) {
+      return;
+    }
+
+    const visitorId = state.selectedVisitorId;
+    const beforeId = state.eventsNextBeforeId;
+    state.isLoadingMoreEvents = true;
+    state.errorMessage = null;
+    render();
+
+    try {
+      const page = await loadVisitorEvents(visitorId, beforeId);
+
+      if (state.selectedVisitorId !== visitorId) {
+        return;
+      }
+
+      state.events = [...state.events, ...page.events];
+      state.eventsNextBeforeId = page.nextBeforeId;
+      state.hasMoreEvents = page.hasMore;
+    } catch (error) {
+      state.errorMessage = getErrorMessage(error);
+    } finally {
+      state.isLoadingMoreEvents = false;
       render();
     }
   }
@@ -99,6 +148,8 @@ export function createAdminPage(): AdminPageController {
       if (state.selectedVisitorId === visitorId) {
         state.selectedVisitorId = null;
         state.events = [];
+        state.eventsNextBeforeId = null;
+        state.hasMoreEvents = false;
       }
 
       await refreshVisitors();
@@ -153,9 +204,9 @@ export function createAdminPage(): AdminPageController {
           <section class="admin-panel" aria-labelledby="admin-events-title">
             <div class="admin-section-header">
               <h2 id="admin-events-title">События</h2>
-              <span>${state.events.length}</span>
+              <span>${state.events.length}${state.hasMoreEvents ? "+" : ""}</span>
             </div>
-            <div class="admin-table-wrap">
+            <div class="admin-table-wrap admin-events-wrap" data-admin-events-scroll>
               <table class="admin-table admin-events-table">
                 <thead>
                   <tr>
@@ -167,6 +218,7 @@ export function createAdminPage(): AdminPageController {
                 </thead>
                 <tbody>
                   ${renderEventRows()}
+                  ${renderEventsPagingRow()}
                 </tbody>
               </table>
             </div>
@@ -188,6 +240,8 @@ export function createAdminPage(): AdminPageController {
 
         state.selectedVisitorId = visitorId;
         state.events = [];
+        state.eventsNextBeforeId = null;
+        state.hasMoreEvents = false;
         render();
         await refreshEvents();
       });
@@ -203,6 +257,17 @@ export function createAdminPage(): AdminPageController {
 
         await deleteSelectedVisitor(visitorId);
       });
+    });
+
+    root.querySelector<HTMLElement>("[data-admin-events-scroll]")?.addEventListener("scroll", (event) => {
+      const element = event.currentTarget;
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+
+      if (element.scrollTop + element.clientHeight >= element.scrollHeight - 120) {
+        void loadMoreEvents();
+      }
     });
   }
 
@@ -272,6 +337,26 @@ export function createAdminPage(): AdminPageController {
         `,
       )
       .join("");
+  }
+
+  function renderEventsPagingRow(): string {
+    if (!state.selectedVisitorId || state.isLoadingEvents) {
+      return "";
+    }
+
+    if (state.isLoadingMoreEvents) {
+      return '<tr><td colspan="4" class="admin-empty">Загружаем еще события...</td></tr>';
+    }
+
+    if (state.hasMoreEvents) {
+      return '<tr><td colspan="4" class="admin-empty">Прокрутите ниже, чтобы загрузить еще.</td></tr>';
+    }
+
+    if (state.events.length > 0) {
+      return '<tr><td colspan="4" class="admin-empty">Все события загружены.</td></tr>';
+    }
+
+    return "";
   }
 
   render();
@@ -438,6 +523,10 @@ function injectAdminStyles(): void {
 
     .admin-table-wrap {
       overflow: auto;
+    }
+
+    .admin-events-wrap {
+      max-height: min(70dvh, 760px);
     }
 
     .admin-table {

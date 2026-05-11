@@ -28,6 +28,16 @@ const firstVisitorEvents = [
   },
 ];
 
+const nextVisitorEvents = [
+  {
+    id: 1,
+    visitor_id: visitors[0].id,
+    type: "game_start",
+    payload: { round: 1 },
+    client_created_at: "2026-05-11T10:01:00.000Z",
+  },
+];
+
 const secondVisitorEvents = [
   {
     id: 3,
@@ -45,8 +55,14 @@ describe("admin page", () => {
         return Response.json({ ok: true, visitors });
       }
 
-      if (url === `/admin/api/visitors/${visitors[0].id}/events`) {
-        return Response.json({ ok: true, visitor_id: visitors[0].id, events: firstVisitorEvents });
+      if (isEventsRequest(url, visitors[0].id)) {
+        return Response.json({
+          ok: true,
+          visitor_id: visitors[0].id,
+          events: firstVisitorEvents,
+          next_before_id: null,
+          has_more: false,
+        });
       }
 
       return Response.json({ ok: false }, { status: 404 });
@@ -57,7 +73,7 @@ describe("admin page", () => {
     await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("game_end") === true);
 
     expect(fetchMock).toHaveBeenCalledWith("/admin/api/visitors");
-    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events`);
+    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events?limit=100`);
     expect(document.querySelector(".admin-page")?.textContent).toContain("Vitest Browser");
     expect(document.querySelector(".admin-page")?.textContent).toContain("score");
   });
@@ -68,12 +84,12 @@ describe("admin page", () => {
         return Response.json({ ok: true, visitors });
       }
 
-      if (url === `/admin/api/visitors/${visitors[0].id}/events`) {
-        return Response.json({ ok: true, visitor_id: visitors[0].id, events: firstVisitorEvents });
+      if (isEventsRequest(url, visitors[0].id)) {
+        return Response.json({ ok: true, visitor_id: visitors[0].id, events: firstVisitorEvents, has_more: false });
       }
 
-      if (url === `/admin/api/visitors/${visitors[1].id}/events`) {
-        return Response.json({ ok: true, visitor_id: visitors[1].id, events: secondVisitorEvents });
+      if (isEventsRequest(url, visitors[1].id)) {
+        return Response.json({ ok: true, visitor_id: visitors[1].id, events: secondVisitorEvents, has_more: false });
       }
 
       return Response.json({ ok: false }, { status: 404 });
@@ -116,12 +132,12 @@ describe("admin page", () => {
         return Response.json({ ok: true, visitors: currentVisitors });
       }
 
-      if (url === `/admin/api/visitors/${visitors[0].id}/events`) {
-        return Response.json({ ok: true, visitor_id: visitors[0].id, events: firstVisitorEvents });
+      if (isEventsRequest(url, visitors[0].id)) {
+        return Response.json({ ok: true, visitor_id: visitors[0].id, events: firstVisitorEvents, has_more: false });
       }
 
-      if (url === `/admin/api/visitors/${visitors[1].id}/events`) {
-        return Response.json({ ok: true, visitor_id: visitors[1].id, events: secondVisitorEvents });
+      if (isEventsRequest(url, visitors[1].id)) {
+        return Response.json({ ok: true, visitor_id: visitors[1].id, events: secondVisitorEvents, has_more: false });
       }
 
       if (url === `/admin/api/visitors/${visitors[0].id}` && init?.method === "DELETE") {
@@ -149,4 +165,68 @@ describe("admin page", () => {
     expect(document.querySelector(".admin-page")?.textContent).not.toContain("game_end");
     expect(document.querySelector(".admin-page")?.textContent).toContain("Second Browser");
   });
+
+  test("loads the next events page when events table is scrolled near the bottom", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/admin/api/visitors") {
+        return Response.json({ ok: true, visitors });
+      }
+
+      if (isEventsRequest(url, visitors[0].id, null)) {
+        return Response.json({
+          ok: true,
+          visitor_id: visitors[0].id,
+          events: firstVisitorEvents,
+          next_before_id: firstVisitorEvents[0].id,
+          has_more: true,
+        });
+      }
+
+      if (isEventsRequest(url, visitors[0].id, firstVisitorEvents[0].id)) {
+        return Response.json({
+          ok: true,
+          visitor_id: visitors[0].id,
+          events: nextVisitorEvents,
+          next_before_id: null,
+          has_more: false,
+        });
+      }
+
+      return Response.json({ ok: false }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await bootApp("/shapes-game/admin");
+    await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("game_end") === true);
+
+    const eventsWrap = document.querySelector<HTMLElement>("[data-admin-events-scroll]");
+    expect(eventsWrap).toBeTruthy();
+    Object.defineProperties(eventsWrap!, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 420 },
+    });
+    eventsWrap!.dispatchEvent(new Event("scroll"));
+
+    await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("game_start") === true);
+
+    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events?limit=100&before_id=2`);
+  });
 });
+
+function isEventsRequest(url: string, visitorId: string, beforeId?: number | null): boolean {
+  const requestUrl = new URL(url, "https://example.test");
+  if (requestUrl.pathname !== `/admin/api/visitors/${visitorId}/events`) {
+    return false;
+  }
+
+  if (requestUrl.searchParams.get("limit") !== "100") {
+    return false;
+  }
+
+  if (beforeId !== undefined) {
+    return requestUrl.searchParams.get("before_id") === (beforeId === null ? null : String(beforeId));
+  }
+
+  return true;
+}
