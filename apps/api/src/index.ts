@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { cors } from "hono/cors";
 import { registerDevControllers } from "./dev";
 
 type Bindings = {
@@ -43,6 +44,15 @@ const uuidPattern =
 
 const app = new Hono<{ Bindings: Bindings }>();
 type AppContext = Context<{ Bindings: Bindings }>;
+
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowHeaders: ["content-type"],
+    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+  }),
+);
 
 app.get("/health", (context) => {
   return context.json({
@@ -165,7 +175,11 @@ function getMaxBatchSize(env: Bindings): number {
 function parseEvents(
   body: unknown,
 ): { ok: true; events: EventInput[] } | { ok: false; error: string } {
-  const events = Array.isArray(body) ? body : [body];
+  const events = isRecord(body) && Array.isArray(body.events)
+    ? body.events
+    : Array.isArray(body)
+      ? body
+      : [body];
 
   if (events.length === 0) {
     return { ok: false, error: "empty_batch" };

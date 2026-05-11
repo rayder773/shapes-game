@@ -41,6 +41,13 @@ import {
   getLifeCrossSegments,
   getLifeDiamondPoints,
 } from "./icons.ts";
+import {
+  getAnalyticsSessionId,
+  startAnalyticsRound,
+  trackAnalyticsEvent,
+  type AnalyticsEventType,
+  type AnalyticsPayload,
+} from "./analytics-client.ts";
 
 type Shape = "circle" | "square" | "triangle";
 type ColorName = "red" | "blue" | "green";
@@ -287,6 +294,8 @@ type Runtime = {
   lives: number;
   maxLives: number;
   damageInvulnerabilityExpiresAt: number;
+  roundId: string;
+  roundStartedAt: number;
 };
 
 type FullscreenDocument = Document & {
@@ -597,6 +606,8 @@ function createRuntime(): Runtime {
     lives: 3,
     maxLives: 5,
     damageInvulnerabilityExpiresAt: 0,
+    roundId: startAnalyticsRound(),
+    roundStartedAt: performance.now(),
   };
 }
 
@@ -730,6 +741,33 @@ function resolveGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
 
 function getGameplayProfile(): GameplayProfile {
   return game.gameplayProfile;
+}
+
+function getRoundElapsedMs(): number {
+  return Math.max(0, Math.round(performance.now() - game.roundStartedAt));
+}
+
+function getSharedAnalyticsPayload(): AnalyticsPayload {
+  const profile = getGameplayProfile();
+
+  return {
+    session_id: getAnalyticsSessionId(),
+    round_id: game.roundId,
+    profile_key: getGameplayProfileKey(profile),
+    compact_touch: profile.compactTouch,
+    score: game.score,
+    coins: game.coins,
+    lives: game.lives,
+    max_lives: game.maxLives,
+    elapsed_ms: getRoundElapsedMs(),
+  };
+}
+
+function trackGameplayEvent(type: AnalyticsEventType, payload: AnalyticsPayload = {}): void {
+  trackAnalyticsEvent(type, {
+    ...getSharedAnalyticsPayload(),
+    ...payload,
+  });
 }
 
 function updateGameplayProfile(resetDraft = false): void {
@@ -1553,6 +1591,9 @@ function pauseGame(autoPaused = false): void {
   clearActiveTouchInputs();
   showPauseOverlay(autoPaused);
   updateHud();
+  trackGameplayEvent("game.round_paused", {
+    auto_paused: autoPaused,
+  });
 }
 
 function resumeGame(): void {
@@ -1565,6 +1606,7 @@ function resumeGame(): void {
   game.lastFrameTime = performance.now();
   game.state = "playing";
   updateHud();
+  trackGameplayEvent("game.round_resumed");
 }
 
 function startOnboarding(): void {
@@ -2229,6 +2271,10 @@ function togglePauseGame(): void {
         destroyFigureEntity(target);
         game.score += 1;
         updateHud();
+        trackGameplayEvent("game.target_consumed", {
+          score_delta: 1,
+          targets_remaining: [...game.queries.targets].length,
+        });
 
         if (!hasLifePickup() && Math.random() < getGameplayProfile().lifeSpawnChance) {
           game.queues.spawns.push({ type: "spawn-life" });
@@ -2251,6 +2297,9 @@ function togglePauseGame(): void {
         game.damageInvulnerabilityExpiresAt = performance.now() + DAMAGE_INVULNERABILITY_MS;
         game.queues.collisionEvents.length = 0;
         updateHud();
+        trackGameplayEvent("game.life_lost", {
+          lives_lost: 1,
+        });
       }
 
       if (command.type === "collect-life") {
@@ -2261,6 +2310,7 @@ function togglePauseGame(): void {
 
         destroyFigureEntity(lifeEntity);
 
+        const livesBeforeCollection = game.lives;
         if (game.lives < game.maxLives) {
           game.lives += 1;
         } else {
@@ -2268,6 +2318,9 @@ function togglePauseGame(): void {
         }
 
         updateHud();
+        trackGameplayEvent("game.life_collected", {
+          lives_added: game.lives - livesBeforeCollection,
+        });
       }
 
       if (command.type === "collect-coin") {
@@ -2280,6 +2333,9 @@ function togglePauseGame(): void {
         game.coins += 1;
         pulseCoinsHud();
         updateHud();
+        trackGameplayEvent("game.coin_collected", {
+          coins_added: 1,
+        });
       }
 
       if (command.type === "game-over") {
@@ -2300,6 +2356,13 @@ function togglePauseGame(): void {
         game.lastGameOverWasNewBest = isNewBestScore;
         game.previousBestScoreBeforeGameOver = isNewBestScore ? previousBestScore : null;
         game.gameOverInstallPrompt = pwa.consumeGameOverInstallPrompt();
+        trackGameplayEvent("game.game_over", {
+          base_score: game.lastRoundBaseScore,
+          coin_bonus: game.lastRoundCoinBonus,
+          final_score: game.lastRoundFinalScore,
+          best_score: game.lastRoundBestScore,
+          is_new_best: game.lastGameOverWasNewBest,
+        });
         game.state = "gameOver";
         clearInputState();
         clearActiveTouchInputs();
@@ -2592,6 +2655,8 @@ function togglePauseGame(): void {
     game.coins = 0;
     game.lives = getGameplayProfile().startLives;
     game.maxLives = getGameplayProfile().maxLives;
+    game.roundId = startAnalyticsRound();
+    game.roundStartedAt = performance.now();
     game.lastGameOverWasNewBest = false;
     game.previousBestScoreBeforeGameOver = null;
     game.lastRoundBaseScore = 0;
@@ -2632,8 +2697,18 @@ function togglePauseGame(): void {
   }
 
   function restartGame(): void {
+    const shouldTrackRestart = game.state !== "boot";
+
+    if (shouldTrackRestart) {
+      trackGameplayEvent("game.round_restarted");
+    }
+
     resetRuntime();
     seedWorld();
+    trackGameplayEvent("game.round_started", {
+      target_count: [...game.queries.targets].length,
+      start_lives: game.lives,
+    });
   }
 
   const FIXED_TICK_SYSTEMS: Array<() => void> = [

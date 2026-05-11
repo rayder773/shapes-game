@@ -13,7 +13,6 @@ type Internals = {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __ANTI_MATCH_TEST_INTERNALS__: Internals;
 }
 

@@ -13,6 +13,7 @@
     "build": "npm run build --workspace web && npm run build --workspace api",
     "build:web": "npm run build --workspace web",
     "build:api": "npm run build --workspace api",
+    "deploy:production": "npm run deploy:production --workspace api",
     "test": "npm run test --workspace web",
     "test:web": "npm run test --workspace web",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true"

@@ -190,7 +190,7 @@ describe("gameplay core", () => {
       220,
     );
 
-    let state = snapshot();
+    const state = snapshot();
     expect(state.score).toBe(1);
     expect(document.getElementById("hud-score")?.textContent).toBe("Счет: 1");
     expect(api.getTargets().find((target) => target.id === safeTargetId)).toBeUndefined();
