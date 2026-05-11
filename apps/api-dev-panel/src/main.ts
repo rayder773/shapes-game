@@ -1,11 +1,3 @@
-type ClientStatus = "none" | "known_visitor" | "unknown_visitor" | "invalid_format";
-
-type ClientInfo = {
-  cookie_name: string;
-  cookie_value: string | null;
-  status: ClientStatus;
-};
-
 type VisitorRecord = {
   id: string;
   ip: string;
@@ -35,8 +27,7 @@ type ScenarioId =
   | "batch"
   | "invalid-json"
   | "invalid-date"
-  | "oversized-batch"
-  | "broken-cookie";
+  | "oversized-batch";
 
 type Scenario = {
   id: ScenarioId;
@@ -53,7 +44,7 @@ type RequestPreview = {
 };
 
 type AppState = {
-  clientInfo: ClientInfo | null;
+  clientId: string;
   visitors: VisitorRecord[];
   selectedVisitorId: string | null;
   selectedVisitorEvents: EventRecord[];
@@ -64,7 +55,6 @@ type AppState = {
   requestLog: RequestLogEntry[];
   isSending: boolean;
   isDeleting: boolean;
-  isUsingVisitor: boolean;
   errorMessage: string | null;
 };
 
@@ -74,7 +64,7 @@ const scenarios: Scenario[] = [
   {
     id: "single-event",
     label: "Send single event",
-    description: "One valid analytics event using the current client cookie state.",
+    description: "One valid analytics event using the panel client id.",
     editorMode: "json",
   },
   {
@@ -101,16 +91,12 @@ const scenarios: Scenario[] = [
     description: "More than the default max batch size to hit batch_too_large.",
     editorMode: "none",
   },
-  {
-    id: "broken-cookie",
-    label: "Send with broken cookie",
-    description: "Sets an invalid cookie, then sends a valid event to hit invalid_visitor.",
-    editorMode: "json",
-  },
 ];
 
+const panelClientId = getOrCreatePanelClientId();
+
 const state: AppState = {
-  clientInfo: null,
+  clientId: panelClientId,
   visitors: [],
   selectedVisitorId: null,
   selectedVisitorEvents: [],
@@ -121,7 +107,6 @@ const state: AppState = {
   requestLog: [],
   isSending: false,
   isDeleting: false,
-  isUsingVisitor: false,
   errorMessage: null,
 };
 
@@ -147,7 +132,7 @@ async function refreshData(): Promise<void> {
   state.errorMessage = null;
 
   try {
-    await Promise.all([loadClientInfo(), loadVisitors()]);
+    await loadVisitors();
     await syncSelectedVisitorEvents();
   } catch (error) {
     state.errorMessage = getErrorMessage(error);
@@ -155,21 +140,6 @@ async function refreshData(): Promise<void> {
 
   updatePreview();
   render();
-}
-
-async function loadClientInfo(): Promise<void> {
-  const response = await fetch("/dev/api/client");
-  const payload = (await response.json()) as { ok: boolean } & ClientInfo;
-
-  if (!response.ok || !payload.ok) {
-    throw new Error("Failed to load current client state");
-  }
-
-  state.clientInfo = {
-    cookie_name: payload.cookie_name,
-    cookie_value: payload.cookie_value,
-    status: payload.status,
-  };
 }
 
 async function loadVisitors(): Promise<void> {
@@ -234,20 +204,11 @@ function render(): void {
         <section class="panel panel-left">
           <div class="panel-section">
             <div class="section-header">
-              <h2>Current Client</h2>
-              <span class="badge ${getClientStatusClass(state.clientInfo?.status ?? "none")}">${formatClientStatus(state.clientInfo?.status ?? "none")}</span>
+              <h2>Panel Client</h2>
             </div>
             <div class="key-value">
-              <span>Cookie name</span>
-              <code>${escapeHtml(state.clientInfo?.cookie_name ?? "loading")}</code>
-            </div>
-            <div class="key-value">
-              <span>Cookie value</span>
-              <code class="cookie-value">${escapeHtml(state.clientInfo?.cookie_value ?? "none")}</code>
-            </div>
-            <div class="action-row">
-              <button data-client-action="fresh" type="button">Start as fresh client</button>
-              <button data-client-action="invalid" type="button">Set broken cookie</button>
+              <span>Client ID</span>
+              <code>${escapeHtml(state.clientId)}</code>
             </div>
           </div>
 
@@ -358,11 +319,6 @@ function render(): void {
             <div class="section-header">
               <h2>Selected Visitor</h2>
               <div class="action-row compact">
-                <button data-use-visitor type="button" ${
-                  !state.selectedVisitorId || state.isUsingVisitor ? "disabled" : ""
-                }>
-                  ${state.isUsingVisitor ? "Using..." : "Use this visitor"}
-                </button>
                 <button data-delete-visitor type="button" class="danger" ${
                   !state.selectedVisitorId || state.isDeleting ? "disabled" : ""
                 }>
@@ -491,17 +447,6 @@ function bindEvents(): void {
     render();
   });
 
-  document.querySelectorAll<HTMLButtonElement>("[data-client-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const action = button.dataset.clientAction;
-      if (!action) {
-        return;
-      }
-
-      await runClientAction(action);
-    });
-  });
-
   document.querySelector<HTMLButtonElement>("[data-run-scenario]")?.addEventListener("click", async () => {
     await runScenario();
   });
@@ -542,26 +487,6 @@ function bindEvents(): void {
 
     await deleteSelectedVisitor();
   });
-
-  document.querySelector<HTMLButtonElement>("[data-use-visitor]")?.addEventListener("click", async () => {
-    await useSelectedVisitor();
-  });
-}
-
-async function runClientAction(action: string): Promise<void> {
-  state.errorMessage = null;
-
-  try {
-    const response = await fetch(`/dev/api/client/${action}`, { method: "POST" });
-    if (!response.ok) {
-      throw new Error(`Failed to set client action: ${action}`);
-    }
-
-    await refreshData();
-  } catch (error) {
-    state.errorMessage = getErrorMessage(error);
-    render();
-  }
 }
 
 async function runScenario(): Promise<void> {
@@ -572,10 +497,6 @@ async function runScenario(): Promise<void> {
   const scenario = getScenario(state.scenarioId);
 
   try {
-    if (scenario.id === "broken-cookie") {
-      await runClientAction("invalid");
-    }
-
     const request = buildScenarioRequest(scenario.id);
     const response = await fetch(request.url, {
       method: request.method,
@@ -646,44 +567,6 @@ async function deleteSelectedVisitor(): Promise<void> {
   }
 }
 
-async function useSelectedVisitor(): Promise<void> {
-  if (!state.selectedVisitorId) {
-    return;
-  }
-
-  state.errorMessage = null;
-  state.isUsingVisitor = true;
-  render();
-
-  try {
-    const response = await fetch(`/dev/api/client/visitor/${state.selectedVisitorId}`, {
-      method: "POST",
-    });
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      throw new Error(responseText || "Failed to use selected visitor");
-    }
-
-    state.lastResponse = formatResponse(response.status, responseText);
-    pushRequestLog({
-      label: "Use this visitor",
-      status: response.status,
-      response: responseText,
-    });
-
-    await refreshData();
-  } catch (error) {
-    const message = getErrorMessage(error);
-    state.errorMessage = message;
-    state.lastResponse = `Use visitor failed\n${message}`;
-    render();
-  } finally {
-    state.isUsingVisitor = false;
-    render();
-  }
-}
-
 function buildScenarioRequest(scenarioId: ScenarioId): RequestPreview {
   const defaultRequest: RequestPreview = {
     method: "POST",
@@ -696,7 +579,6 @@ function buildScenarioRequest(scenarioId: ScenarioId): RequestPreview {
     case "single-event":
     case "batch":
     case "invalid-date":
-    case "broken-cookie":
       return {
         ...defaultRequest,
         body: state.editors[scenarioId],
@@ -709,7 +591,7 @@ function buildScenarioRequest(scenarioId: ScenarioId): RequestPreview {
     case "oversized-batch":
       return {
         ...defaultRequest,
-        body: JSON.stringify(createOversizedBatch(), null, 2),
+        body: JSON.stringify(createAnalyticsEnvelope(createOversizedBatch()), null, 2),
       };
     default:
       return defaultRequest;
@@ -722,27 +604,35 @@ function updatePreview(): void {
 
 function createInitialEditors(): Record<ScenarioId, string> {
   return {
-    "single-event": JSON.stringify(createSingleEvent("panel.single_event"), null, 2),
+    "single-event": JSON.stringify(createAnalyticsEnvelope([createSingleEvent("panel.single_event")]), null, 2),
     batch: JSON.stringify(
-      [
+      createAnalyticsEnvelope([
         createSingleEvent("panel.batch.start"),
         createSingleEvent("panel.batch.finish"),
-      ],
+      ]),
       null,
       2,
     ),
     "invalid-json": "{",
     "invalid-date": JSON.stringify(
-      {
+      createAnalyticsEnvelope([{
         type: "panel.invalid_date",
         payload: { source: "api-dev-panel" },
         client_created_at: "not-a-date",
-      },
+      }]),
       null,
       2,
     ),
     "oversized-batch": "",
-    "broken-cookie": JSON.stringify(createSingleEvent("panel.broken_cookie"), null, 2),
+  };
+}
+
+function createAnalyticsEnvelope(
+  events: Array<{ type: string; payload: JsonValue; client_created_at: string }>,
+): { client_id: string; events: Array<{ type: string; payload: JsonValue; client_created_at: string }> } {
+  return {
+    client_id: panelClientId,
+    events,
   };
 }
 
@@ -806,30 +696,16 @@ function pushRequestLog(entry: Omit<RequestLogEntry, "id" | "time">): void {
   ].slice(0, 8);
 }
 
-function formatClientStatus(status: ClientStatus): string {
-  switch (status) {
-    case "known_visitor":
-      return "Known visitor";
-    case "unknown_visitor":
-      return "Unknown visitor";
-    case "invalid_format":
-      return "Invalid cookie";
-    case "none":
-      return "No cookie";
+function getOrCreatePanelClientId(): string {
+  const storageKey = "shapes-game.api-dev-panel.clientId";
+  const existingClientId = window.localStorage.getItem(storageKey);
+  if (existingClientId) {
+    return existingClientId;
   }
-}
 
-function getClientStatusClass(status: ClientStatus): string {
-  switch (status) {
-    case "known_visitor":
-      return "badge-success";
-    case "unknown_visitor":
-      return "badge-warning";
-    case "invalid_format":
-      return "badge-danger";
-    case "none":
-      return "badge-neutral";
-  }
+  const clientId = crypto.randomUUID();
+  window.localStorage.setItem(storageKey, clientId);
+  return clientId;
 }
 
 function formatDateTime(value: string): string {
@@ -1085,10 +961,6 @@ function injectStyles(): void {
     .key-value code {
       overflow-wrap: anywhere;
       text-align: right;
-    }
-
-    .cookie-value {
-      max-width: 20rem;
     }
 
     .action-row {

@@ -13,7 +13,6 @@ name = "shapes-game-api"
 
 [env.production.vars]
 APP_ENV = "production"
-ANALYTICS_COOKIE_NAME = "sg_visitor_id"
 ANALYTICS_MAX_BATCH_SIZE = "50"
 
 [[env.production.d1_databases]]

@@ -108,4 +108,45 @@ describe("admin page", () => {
     await bootApp("/shapes-game/admin");
     await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("Не удалось загрузить пользователей") === true);
   });
+
+  test("deletes a visitor with related events and refreshes the list", async () => {
+    let currentVisitors = [...visitors];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/admin/api/visitors") {
+        return Response.json({ ok: true, visitors: currentVisitors });
+      }
+
+      if (url === `/admin/api/visitors/${visitors[0].id}/events`) {
+        return Response.json({ ok: true, visitor_id: visitors[0].id, events: firstVisitorEvents });
+      }
+
+      if (url === `/admin/api/visitors/${visitors[1].id}/events`) {
+        return Response.json({ ok: true, visitor_id: visitors[1].id, events: secondVisitorEvents });
+      }
+
+      if (url === `/admin/api/visitors/${visitors[0].id}` && init?.method === "DELETE") {
+        currentVisitors = [visitors[1]];
+        return Response.json({ ok: true, deleted_visitor_id: visitors[0].id });
+      }
+
+      return Response.json({ ok: false }, { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await bootApp("/shapes-game/admin");
+    await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("game_end") === true);
+
+    const deleteButton = document.querySelector<HTMLButtonElement>(
+      `[data-admin-delete-visitor="${visitors[0].id}"]`,
+    );
+    expect(deleteButton).toBeTruthy();
+    click(deleteButton!);
+
+    await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("settings_open") === true);
+
+    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}`, { method: "DELETE" });
+    expect(document.querySelector(".admin-page")?.textContent).not.toContain("game_end");
+    expect(document.querySelector(".admin-page")?.textContent).toContain("Second Browser");
+  });
 });

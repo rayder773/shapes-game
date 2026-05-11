@@ -1,4 +1,4 @@
-import { loadVisitorEvents, loadVisitors, type EventRecord, type VisitorRecord } from "./admin-api.ts";
+import { deleteVisitor, loadVisitorEvents, loadVisitors, type EventRecord, type VisitorRecord } from "./admin-api.ts";
 
 type AdminState = {
   visitors: VisitorRecord[];
@@ -6,6 +6,7 @@ type AdminState = {
   events: EventRecord[];
   isLoadingVisitors: boolean;
   isLoadingEvents: boolean;
+  deletingVisitorId: string | null;
   errorMessage: string | null;
   hasLoaded: boolean;
 };
@@ -21,6 +22,7 @@ const state: AdminState = {
   events: [],
   isLoadingVisitors: false,
   isLoadingEvents: false,
+  deletingVisitorId: null,
   errorMessage: null,
   hasLoaded: false,
 };
@@ -77,6 +79,37 @@ export function createAdminPage(): AdminPageController {
     }
   }
 
+  async function deleteSelectedVisitor(visitorId: string): Promise<void> {
+    const visitor = state.visitors.find((item) => item.id === visitorId);
+    const confirmed = window.confirm(
+      `Удалить пользователя ${visitor ? shortId(visitor.id) : visitorId} и все его события?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    state.deletingVisitorId = visitorId;
+    state.errorMessage = null;
+    render();
+
+    try {
+      await deleteVisitor(visitorId);
+
+      if (state.selectedVisitorId === visitorId) {
+        state.selectedVisitorId = null;
+        state.events = [];
+      }
+
+      await refreshVisitors();
+    } catch (error) {
+      state.errorMessage = getErrorMessage(error);
+    } finally {
+      state.deletingVisitorId = null;
+      render();
+    }
+  }
+
   function render(): void {
     root.innerHTML = `
       <section class="admin-shell" aria-labelledby="admin-title">
@@ -107,6 +140,7 @@ export function createAdminPage(): AdminPageController {
                     <th>User-Agent</th>
                     <th>События</th>
                     <th>Создан</th>
+                    <th>Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -158,20 +192,35 @@ export function createAdminPage(): AdminPageController {
         await refreshEvents();
       });
     });
+
+    root.querySelectorAll<HTMLButtonElement>("[data-admin-delete-visitor]").forEach((button) => {
+      button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const visitorId = button.dataset.adminDeleteVisitor;
+        if (!visitorId || state.deletingVisitorId) {
+          return;
+        }
+
+        await deleteSelectedVisitor(visitorId);
+      });
+    });
   }
 
   function renderVisitorRows(): string {
     if (state.isLoadingVisitors && !state.hasLoaded) {
-      return '<tr><td colspan="5" class="admin-empty">Загружаем пользователей...</td></tr>';
+      return '<tr><td colspan="6" class="admin-empty">Загружаем пользователей...</td></tr>';
     }
 
     if (state.visitors.length === 0) {
-      return '<tr><td colspan="5" class="admin-empty">Пользователей пока нет.</td></tr>';
+      return '<tr><td colspan="6" class="admin-empty">Пользователей пока нет.</td></tr>';
     }
 
     return state.visitors
       .map(
-        (visitor) => `
+        (visitor) => {
+          const isDeleting = state.deletingVisitorId === visitor.id;
+
+          return `
           <tr data-admin-visitor-id="${escapeHtml(visitor.id)}" class="${visitor.id === state.selectedVisitorId ? "is-selected" : ""}" tabindex="0">
             <td>
               <strong>${escapeHtml(shortId(visitor.id))}</strong>
@@ -181,8 +230,19 @@ export function createAdminPage(): AdminPageController {
             <td class="admin-user-agent">${escapeHtml(visitor.user_agent || "нет user-agent")}</td>
             <td>${visitor.events_count}</td>
             <td>${escapeHtml(formatDateTime(visitor.created_at))}</td>
+            <td>
+              <button
+                class="admin-button admin-button-danger"
+                type="button"
+                data-admin-delete-visitor="${escapeHtml(visitor.id)}"
+                ${isDeleting ? "disabled" : ""}
+              >
+                ${isDeleting ? "Удаляем" : "Удалить"}
+              </button>
+            </td>
           </tr>
-        `,
+        `;
+        },
       )
       .join("");
   }
@@ -343,6 +403,16 @@ function injectAdminStyles(): void {
       opacity: 0.65;
     }
 
+    .admin-button-danger {
+      border-color: #e0a3a3;
+      background: #fff5f5;
+      color: #a31f1f;
+    }
+
+    .admin-button-danger:hover:enabled {
+      background: #ffe7e7;
+    }
+
     .admin-banner {
       margin-bottom: 16px;
       border: 1px solid #f0b7b7;
@@ -372,7 +442,7 @@ function injectAdminStyles(): void {
 
     .admin-table {
       width: 100%;
-      min-width: 760px;
+      min-width: 860px;
       border-collapse: collapse;
       font-size: 0.9rem;
     }

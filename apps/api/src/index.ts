@@ -1,13 +1,11 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { registerDevControllers } from "./dev";
 
 type Bindings = {
   DB: D1Database;
   APP_ENV?: string;
-  ANALYTICS_COOKIE_NAME?: string;
   ANALYTICS_MAX_BATCH_SIZE?: string;
 };
 
@@ -15,6 +13,11 @@ type EventInput = {
   type: string;
   payload: unknown;
   client_created_at: string;
+};
+
+type ParsedEvents = {
+  events: EventInput[];
+  clientId: string | null;
 };
 
 type VisitorListRow = {
@@ -37,7 +40,6 @@ type VisitorLookupRow = {
   id: string;
 };
 
-const defaultVisitorCookieName = "sg_visitor_id";
 const defaultMaxBatchSize = 50;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -115,6 +117,17 @@ app.get("/admin/api/visitors/:visitorId/events", async (context) => {
   });
 });
 
+app.delete("/admin/api/visitors/:visitorId", async (context) => {
+  const visitorId = context.req.param("visitorId");
+  const deleted = await deleteVisitorWithEvents(context, visitorId);
+
+  if (!deleted) {
+    return context.json({ ok: false, error: "visitor_not_found" }, 404);
+  }
+
+  return context.json({ ok: true, deleted_visitor_id: visitorId });
+});
+
 app.post("/analytics/events", async (context) => {
   let body: unknown;
 
@@ -130,16 +143,15 @@ app.post("/analytics/events", async (context) => {
     return context.json({ ok: false, error: parsedEvents.error }, 400);
   }
 
-  const events = parsedEvents.events;
+  const { events, clientId } = parsedEvents.parsed;
 
   if (events.length > getMaxBatchSize(context.env)) {
     return context.json({ ok: false, error: "batch_too_large" }, 413);
   }
 
-  const visitor = await resolveVisitor(context);
+  const visitor = await resolveVisitor(context, clientId);
 
   if (!visitor.ok) {
-    clearVisitorCookie(context);
     return context.json({ ok: false, error: "invalid_visitor" }, 401);
   }
 
@@ -158,10 +170,6 @@ app.post("/analytics/events", async (context) => {
   });
 });
 
-function getVisitorCookieName(env: Bindings): string {
-  return env.ANALYTICS_COOKIE_NAME?.trim() || defaultVisitorCookieName;
-}
-
 function getMaxBatchSize(env: Bindings): number {
   const maxBatchSize = Number(env.ANALYTICS_MAX_BATCH_SIZE);
 
@@ -174,7 +182,10 @@ function getMaxBatchSize(env: Bindings): number {
 
 function parseEvents(
   body: unknown,
-): { ok: true; events: EventInput[] } | { ok: false; error: string } {
+): { ok: true; parsed: ParsedEvents } | { ok: false; error: string } {
+  const clientId = isRecord(body) && typeof body.client_id === "string"
+    ? body.client_id
+    : null;
   const events = isRecord(body) && Array.isArray(body.events)
     ? body.events
     : Array.isArray(body)
@@ -214,30 +225,40 @@ function parseEvents(
     });
   }
 
-  return { ok: true, events: parsedEvents };
+  return { ok: true, parsed: { events: parsedEvents, clientId } };
 }
 
 async function resolveVisitor(
   context: AppContext,
+  clientId: string | null,
 ): Promise<{ ok: true; id: string } | { ok: false }> {
-  const visitorId = getCookie(context, getVisitorCookieName(context.env));
-
-  if (visitorId) {
-    if (!uuidPattern.test(visitorId)) {
+  if (clientId) {
+    if (!uuidPattern.test(clientId)) {
       return { ok: false };
     }
 
     const visitor = await context.env.DB.prepare(
       "SELECT id FROM visitors WHERE id = ?",
     )
-      .bind(visitorId)
+      .bind(clientId)
       .first<{ id: string }>();
 
-    if (!visitor) {
-      return { ok: false };
+    if (visitor) {
+      return { ok: true, id: visitor.id };
     }
 
-    return { ok: true, id: visitor.id };
+    await context.env.DB.prepare(
+      "INSERT INTO visitors (id, ip, user_agent, created_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(
+        clientId,
+        getRequestIp(context.req.raw),
+        context.req.header("user-agent") ?? "",
+        new Date().toISOString(),
+      )
+      .run();
+
+    return { ok: true, id: clientId };
   }
 
   const newVisitorId = crypto.randomUUID();
@@ -254,25 +275,24 @@ async function resolveVisitor(
     )
     .run();
 
-  setVisitorCookie(context, newVisitorId);
-
   return { ok: true, id: newVisitorId };
 }
 
-function setVisitorCookie(context: AppContext, visitorId: string): void {
-  setCookie(context, getVisitorCookieName(context.env), visitorId, {
-    httpOnly: true,
-    maxAge: 60 * 60 * 24 * 365,
-    path: "/",
-    sameSite: "Lax",
-    secure: new URL(context.req.url).protocol === "https:",
-  });
-}
+async function deleteVisitorWithEvents(context: AppContext, visitorId: string): Promise<boolean> {
+  const visitor = await context.env.DB.prepare("SELECT id FROM visitors WHERE id = ?")
+    .bind(visitorId)
+    .first<VisitorLookupRow>();
 
-function clearVisitorCookie(context: AppContext): void {
-  deleteCookie(context, getVisitorCookieName(context.env), {
-    path: "/",
-  });
+  if (!visitor) {
+    return false;
+  }
+
+  await context.env.DB.batch([
+    context.env.DB.prepare("DELETE FROM events WHERE visitor_id = ?").bind(visitorId),
+    context.env.DB.prepare("DELETE FROM visitors WHERE id = ?").bind(visitorId),
+  ]);
+
+  return true;
 }
 
 function getRequestIp(request: Request): string {

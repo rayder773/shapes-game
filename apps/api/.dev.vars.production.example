@@ -3,5 +3,4 @@
 # Do not commit .dev.vars.production.
 
 APP_ENV=production
-ANALYTICS_COOKIE_NAME=sg_visitor_id
 ANALYTICS_MAX_BATCH_SIZE=50

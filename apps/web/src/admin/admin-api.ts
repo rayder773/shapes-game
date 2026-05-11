@@ -51,3 +51,13 @@ export async function loadVisitorEvents(visitorId: string): Promise<EventRecord[
 
   return payload.events;
 }
+
+export async function deleteVisitor(visitorId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/admin/api/visitors/${encodeURIComponent(visitorId)}`), {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error("Не удалось удалить пользователя");
+  }
+}
