@@ -4,6 +4,7 @@ import {
   bootApp,
   getCanvasLog,
   keydown,
+  playerModel,
   pointerDownCanvasWorld,
   resetCanvasLog,
 } from "./helpers";
@@ -27,8 +28,8 @@ describe("canvas smoke", () => {
     log = getCanvasLog();
     expect(log.length).toBeGreaterThan(0);
 
-    const player = window.__ANTI_MATCH_TEST__!.getPlayer()!;
-    pointerDownCanvasWorld(player.transform!.x + 2, player.transform!.y);
+    const player = playerModel();
+    pointerDownCanvasWorld(player.position.x + 2, player.position.y);
     await advanceFrames(3);
     log = getCanvasLog();
     expect(log.length).toBeGreaterThan(0);

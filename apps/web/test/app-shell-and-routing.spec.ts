@@ -4,7 +4,7 @@ import {
   getCanvas,
   getPauseButton,
   getSettingsPage,
-  snapshot,
+  gameModel,
 } from "./helpers";
 
 describe("app shell and routing", () => {
@@ -15,7 +15,7 @@ describe("app shell and routing", () => {
     expect(document.getElementById("hud-score")?.textContent).toBe("Счет: 0");
     expect(getPauseButton().getAttribute("aria-label")).toBe("Продолжить игру");
     expect(getSettingsPage().hidden).toBe(true);
-    expect(snapshot().state).toBe("paused");
+    expect(gameModel().state).toBe("paused");
   });
 
   test("boots settings route and hides game surface", async () => {

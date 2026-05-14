@@ -49,6 +49,12 @@ import {
   type AnalyticsEventType,
   type AnalyticsPayload,
 } from "./analytics-client.ts";
+import type {
+  GameReadModel,
+  GameReadModelEntity,
+  GameReadModelEntityKind,
+  GameReadModelSettings,
+} from "./game-read-model.ts";
 
 type Shape = "circle" | "square" | "triangle";
 type ColorName = "red" | "blue" | "green";
@@ -206,6 +212,7 @@ type LifePickupEntity = With<GameEntity, "lifePickup" | "transform" | "appearanc
 type CoinPickupEntity = With<GameEntity, "coinPickup" | "transform" | "appearance" | "physics" | "movementDirection">;
 type PhysicsEntity = With<GameEntity, "transform" | "physics" | "movementDirection">;
 type RenderableEntity = With<GameEntity, "transform" | "appearance" | "renderable">;
+type ReadModelSourceEntity = With<GameEntity, "transform" | "appearance">;
 type AppearancePhysicsEntity = With<GameEntity, "appearance" | "physics" | "movementDirection">;
 type InteractiveEntity = With<GameEntity, "transform" | "appearance" | "physics" | "movementDirection">;
 type SettingsEntity = With<GameEntity, "settingsState">;
@@ -696,6 +703,118 @@ function getSettingsEntity(): SettingsEntity | null {
   }
 
   return null;
+}
+
+function cloneReadModelValue<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function getEntityReadModelKind(entity: ReadModelSourceEntity): GameReadModelEntityKind {
+  if (entity.player) return "player";
+  if (entity.target) return "target";
+  if (entity.lifePickup) return "lifePickup";
+  if (entity.coinPickup) return "coinPickup";
+
+  throw new Error(`Unsupported read model entity ${entity.id}`);
+}
+
+function createEntityReadModel(entity: ReadModelSourceEntity): GameReadModelEntity {
+  const model: GameReadModelEntity = {
+    id: entity.id,
+    kind: getEntityReadModelKind(entity),
+    position: {
+      x: entity.transform.x,
+      y: entity.transform.y,
+    },
+    rotation: entity.transform.angle,
+    transform: cloneReadModelValue(entity.transform),
+    appearance: cloneReadModelValue(entity.appearance),
+    ...(entity.player ? { player: true as const } : {}),
+    ...(entity.target ? { target: true as const } : {}),
+    ...(entity.lifePickup ? { lifePickup: true as const } : {}),
+    ...(entity.coinPickup ? { coinPickup: true as const } : {}),
+    ...(entity.movementDirection ? { movementDirection: cloneReadModelValue(entity.movementDirection) } : {}),
+    ...(entity.physics ? { collisionRadius: entity.physics.radius } : {}),
+    ...(entity.physics ? { physics: cloneReadModelValue(entity.physics) } : {}),
+  };
+
+  return model;
+}
+
+function collectEntityReadModels(items: Iterable<unknown>): GameReadModelEntity[] {
+  return [...items].map((entity) => createEntityReadModel(entity as ReadModelSourceEntity));
+}
+
+function getSceneEntityReadModels(): GameReadModelEntity[] {
+  return collectEntityReadModels(game.queries.renderables).sort((left, right) => left.id - right.id);
+}
+
+export function getSettingsReadModel(): GameReadModelSettings | null {
+  const settingsEntity = getSettingsEntity();
+  return settingsEntity ? cloneReadModelValue(settingsEntity.settingsState) : null;
+}
+
+export function getPlayerModel(): GameReadModelEntity | null {
+  const player = getPlayerEntity();
+  return player ? createEntityReadModel(player) : null;
+}
+
+export function getTargetModels(): GameReadModelEntity[] {
+  return collectEntityReadModels(game.queries.targets);
+}
+
+export function getLifePickupModels(): GameReadModelEntity[] {
+  return collectEntityReadModels(game.queries.lifePickups);
+}
+
+export function getCoinPickupModels(): GameReadModelEntity[] {
+  return collectEntityReadModels(game.queries.coinPickups);
+}
+
+export function getGameReadModel(): GameReadModel {
+  const entities = getSceneEntityReadModels();
+
+  return {
+    state: game.state,
+    hud: {
+      score: game.score,
+      coins: game.coins,
+      lives: game.lives,
+      maxLives: game.maxLives,
+      bestScore: game.bestScore,
+    },
+    overlay: {
+      mode: overlayMode,
+    },
+    scene: {
+      entities,
+    },
+    roundResult: {
+      baseScore: game.lastRoundBaseScore,
+      coinBonus: game.lastRoundCoinBonus,
+      finalScore: game.lastRoundFinalScore,
+      bestScore: game.lastRoundBestScore,
+      wasNewBest: game.lastGameOverWasNewBest,
+    },
+    gameplayProfile: cloneReadModelValue(game.gameplayProfile),
+    input: cloneReadModelValue(game.input),
+    settings: getSettingsReadModel(),
+    score: game.score,
+    coins: game.coins,
+    lives: game.lives,
+    maxLives: game.maxLives,
+    bestScore: game.bestScore,
+    lastRoundBaseScore: game.lastRoundBaseScore,
+    lastRoundCoinBonus: game.lastRoundCoinBonus,
+    lastRoundFinalScore: game.lastRoundFinalScore,
+    lastRoundBestScore: game.lastRoundBestScore,
+    lastGameOverWasNewBest: game.lastGameOverWasNewBest,
+    entities,
+  };
 }
 
 function getSavedOverridesForProfile(profileKey: GameplayProfileKey) {

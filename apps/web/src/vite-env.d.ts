@@ -8,10 +8,17 @@ interface ImportMetaEnv {
 
 type AntiMatchTestEntitySnapshot = {
   id: number;
+  kind: "player" | "target" | "lifePickup" | "coinPickup";
   player?: true;
   target?: true;
   lifePickup?: true;
   coinPickup?: true;
+  position: {
+    x: number;
+    y: number;
+  };
+  rotation: number;
+  collisionRadius?: number;
   transform?: {
     x: number;
     y: number;
@@ -35,6 +42,26 @@ type AntiMatchTestEntitySnapshot = {
 
 type AntiMatchTestSnapshot = {
   state: "boot" | "playing" | "paused" | "gameOver";
+  hud: {
+    score: number;
+    coins: number;
+    lives: number;
+    maxLives: number;
+    bestScore: number | null;
+  };
+  overlay: {
+    mode: "install" | "onboarding" | "pause" | "gameOver" | null;
+  };
+  scene: {
+    entities: AntiMatchTestEntitySnapshot[];
+  };
+  roundResult: {
+    baseScore: number;
+    coinBonus: number;
+    finalScore: number;
+    bestScore: number | null;
+    wasNewBest: boolean;
+  };
   score: number;
   coins: number;
   lives: number;
@@ -62,6 +89,7 @@ type AntiMatchTestSnapshot = {
     safeSpawnPadding: number;
   };
   input: Record<"up" | "down" | "left" | "right", boolean>;
+  settings: AntiMatchSettingsState | null;
   entities: AntiMatchTestEntitySnapshot[];
 };
 
@@ -94,6 +122,7 @@ type AntiMatchSettingsState = {
 };
 
 type AntiMatchTestApi = {
+  model: () => AntiMatchTestSnapshot;
   snapshot: () => AntiMatchTestSnapshot;
   getPlayer: () => AntiMatchTestEntitySnapshot | null;
   getTargets: () => AntiMatchTestEntitySnapshot[];

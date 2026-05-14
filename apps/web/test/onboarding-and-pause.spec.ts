@@ -7,9 +7,9 @@ import {
   getOverlay,
   getPauseButton,
   getPrimaryOverlayButton,
+  gameModel,
   keydown,
   setDocumentHidden,
-  snapshot,
   waitForPlayingState,
 } from "./helpers";
 
@@ -20,14 +20,14 @@ describe("onboarding and pause", () => {
     expect(getOverlay().classList.contains("visible")).toBe(true);
     expect(document.getElementById("overlay-title")?.textContent).toBe("Правила");
     expect(document.getElementById("overlay-tips")?.children).toHaveLength(3);
-    expect(snapshot().state).toBe("paused");
+    expect(gameModel().state).toBe("paused");
 
     acceptOnboarding();
     await waitForPlayingState();
 
     expect(window.localStorage.getItem("shapes-game.rulesAccepted")).toBe("true");
     expect(getOverlay().classList.contains("visible")).toBe(false);
-    expect(snapshot().state).toBe("playing");
+    expect(gameModel().state).toBe("playing");
   });
 
   test("accepted rules suppress onboarding on next boot", async () => {
@@ -35,7 +35,7 @@ describe("onboarding and pause", () => {
     await bootApp("/shapes-game/");
 
     expect(getOverlay().classList.contains("visible")).toBe(false);
-    expect(snapshot().state).toBe("playing");
+    expect(gameModel().state).toBe("playing");
   });
 
   test("pause, resume and autopause flows update overlay and button labels", async () => {
@@ -43,7 +43,7 @@ describe("onboarding and pause", () => {
     await bootApp("/shapes-game/");
 
     click(getPauseButton());
-    expect(snapshot().state).toBe("paused");
+    expect(gameModel().state).toBe("paused");
     expect(document.getElementById("overlay-title")?.textContent).toBe("Пауза");
     expect(getPauseButton().getAttribute("aria-label")).toBe("Продолжить игру");
     expect(document.getElementById("overlay-secondary-button")?.textContent).toBe("Настройки");
@@ -51,22 +51,22 @@ describe("onboarding and pause", () => {
 
     click(getPrimaryOverlayButton());
     await waitForPlayingState();
-    expect(snapshot().state).toBe("playing");
+    expect(gameModel().state).toBe("playing");
 
     keydown("Escape");
-    expect(snapshot().state).toBe("paused");
+    expect(gameModel().state).toBe("paused");
     keydown("Escape");
     await waitForPlayingState();
-    expect(snapshot().state).toBe("playing");
+    expect(gameModel().state).toBe("playing");
 
     blurWindow();
-    expect(snapshot().state).toBe("paused");
+    expect(gameModel().state).toBe("paused");
     expect(document.getElementById("overlay-message")?.textContent).toBe("Игра остановлена.");
-    expect(snapshot().input).toEqual({ up: false, down: false, left: false, right: false });
+    expect(gameModel().input).toEqual({ up: false, down: false, left: false, right: false });
 
     click(getPrimaryOverlayButton());
     await waitForPlayingState();
     setDocumentHidden(true);
-    expect(snapshot().state).toBe("paused");
+    expect(gameModel().state).toBe("paused");
   });
 });

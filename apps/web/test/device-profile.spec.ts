@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
   bootApp,
+  gameModel,
   setDesktopDevice,
   setPhoneDevice,
-  snapshot,
 } from "./helpers";
 
 describe("device profile selection", () => {
@@ -11,7 +11,7 @@ describe("device profile selection", () => {
     setDesktopDevice();
     await bootApp("/shapes-game/");
 
-    const state = snapshot();
+    const state = gameModel();
     expect(state.gameplayProfile.compactTouch).toBe(false);
     expect(state.gameplayProfile.startTargetCount).toBe(9);
     expect(state.gameplayProfile.maxTargets).toBe(20);
@@ -21,7 +21,7 @@ describe("device profile selection", () => {
     setPhoneDevice();
     await bootApp("/shapes-game/");
 
-    const state = snapshot();
+    const state = gameModel();
     expect(state.gameplayProfile.compactTouch).toBe(true);
     expect(state.gameplayProfile.startTargetCount).toBe(5);
     expect(state.gameplayProfile.maxTargets).toBe(12);
