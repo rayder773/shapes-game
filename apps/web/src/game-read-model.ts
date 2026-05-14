@@ -7,10 +7,6 @@ export type GameReadModelPosition = {
   y: number;
 };
 
-export type GameReadModelTransform = GameReadModelPosition & {
-  angle: number;
-};
-
 export type GameReadModelAppearance = {
   shape: "circle" | "square" | "triangle";
   color: "red" | "blue" | "green";
@@ -23,25 +19,14 @@ export type GameReadModelMovementDirection = {
   y: number;
 };
 
-export type GameReadModelPhysics = {
-  bodyId: number;
-  radius: number;
-};
-
 export type GameReadModelEntity = {
   id: number;
   kind: GameReadModelEntityKind;
   position: GameReadModelPosition;
   rotation: number;
   collisionRadius?: number;
-  transform: GameReadModelTransform;
   appearance: GameReadModelAppearance;
   movementDirection?: GameReadModelMovementDirection;
-  physics?: GameReadModelPhysics;
-  player?: true;
-  target?: true;
-  lifePickup?: true;
-  coinPickup?: true;
 };
 
 export type GameReadModelGameplayProfile = {
@@ -124,15 +109,4 @@ export type GameReadModel = {
   gameplayProfile: GameReadModelGameplayProfile;
   input: GameReadModelInput;
   settings: GameReadModelSettings | null;
-  score: number;
-  coins: number;
-  lives: number;
-  maxLives: number;
-  bestScore: number | null;
-  lastRoundBaseScore: number;
-  lastRoundCoinBonus: number;
-  lastRoundFinalScore: number;
-  lastRoundBestScore: number | null;
-  lastGameOverWasNewBest: boolean;
-  entities: GameReadModelEntity[];
 };

@@ -50,10 +50,6 @@ export async function bootApp(path = "/shapes-game/") {
   return window.__ANTI_MATCH_TEST__;
 }
 
-export function snapshot() {
-  return model();
-}
-
 export function model() {
   const api = window.__ANTI_MATCH_TEST__;
   expect(api).toBeDefined();

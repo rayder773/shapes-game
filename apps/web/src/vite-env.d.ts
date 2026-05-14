@@ -9,21 +9,12 @@ interface ImportMetaEnv {
 type AntiMatchTestEntitySnapshot = {
   id: number;
   kind: "player" | "target" | "lifePickup" | "coinPickup";
-  player?: true;
-  target?: true;
-  lifePickup?: true;
-  coinPickup?: true;
   position: {
     x: number;
     y: number;
   };
   rotation: number;
   collisionRadius?: number;
-  transform?: {
-    x: number;
-    y: number;
-    angle: number;
-  };
   appearance?: {
     shape: "circle" | "square" | "triangle";
     color: "red" | "blue" | "green";
@@ -33,10 +24,6 @@ type AntiMatchTestEntitySnapshot = {
   movementDirection?: {
     x: number;
     y: number;
-  };
-  physics?: {
-    bodyId: number;
-    radius: number;
   };
 };
 
@@ -62,16 +49,6 @@ type AntiMatchTestSnapshot = {
     bestScore: number | null;
     wasNewBest: boolean;
   };
-  score: number;
-  coins: number;
-  lives: number;
-  maxLives: number;
-  bestScore: number | null;
-  lastRoundBaseScore: number;
-  lastRoundCoinBonus: number;
-  lastRoundFinalScore: number;
-  lastRoundBestScore: number | null;
-  lastGameOverWasNewBest: boolean;
   gameplayProfile: {
     compactTouch: boolean;
     startTargetCount: number;
@@ -90,7 +67,6 @@ type AntiMatchTestSnapshot = {
   };
   input: Record<"up" | "down" | "left" | "right", boolean>;
   settings: AntiMatchSettingsState | null;
-  entities: AntiMatchTestEntitySnapshot[];
 };
 
 type AntiMatchSettingsState = {
@@ -123,7 +99,6 @@ type AntiMatchSettingsState = {
 
 type AntiMatchTestApi = {
   model: () => AntiMatchTestSnapshot;
-  snapshot: () => AntiMatchTestSnapshot;
   getPlayer: () => AntiMatchTestEntitySnapshot | null;
   getTargets: () => AntiMatchTestEntitySnapshot[];
   getLifePickups: () => AntiMatchTestEntitySnapshot[];

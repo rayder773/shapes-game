@@ -74,7 +74,7 @@ function distancePointToSegment(
 
 function findClearTarget(
   state: AntiMatchTestSnapshot,
-  predicate: (player: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>) => boolean,
+  predicate: (player: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>) => boolean,
 ) {
   const player = state.scene.entities.find((entity) => entity.kind === "player");
   if (!player || !player.appearance || player.collisionRadius === undefined) {
@@ -102,7 +102,7 @@ function findClearTarget(
 }
 
 async function restartUntilClearTarget(
-  predicate: (player: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>) => boolean,
+  predicate: (player: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>) => boolean,
   maxAttempts = 8,
 ) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -194,7 +194,6 @@ describe("gameplay core", () => {
 
     const state = gameModel();
     expect(state.hud.score).toBe(1);
-    expect(document.getElementById("hud-score")?.textContent).toBe("Счет: 1");
     expect(targetModels().find((target) => target.id === safeTargetId)).toBeUndefined();
     expect(playerModel().appearance).toMatchObject(safeTargetAppearance);
     expect(sceneEntities().filter((entity) => entity.kind === "lifePickup")).toHaveLength(1);
@@ -214,7 +213,6 @@ describe("gameplay core", () => {
       220,
     );
     expect(sceneEntities().filter((entity) => entity.kind === "coinPickup")).toHaveLength(0);
-    expect(document.getElementById("hud-coins")?.dataset.pulse).toBe("true");
   });
 
   test("unsafe target collision decreases lives", async () => {

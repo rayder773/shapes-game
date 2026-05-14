@@ -731,15 +731,9 @@ function createEntityReadModel(entity: ReadModelSourceEntity): GameReadModelEnti
       y: entity.transform.y,
     },
     rotation: entity.transform.angle,
-    transform: cloneReadModelValue(entity.transform),
     appearance: cloneReadModelValue(entity.appearance),
-    ...(entity.player ? { player: true as const } : {}),
-    ...(entity.target ? { target: true as const } : {}),
-    ...(entity.lifePickup ? { lifePickup: true as const } : {}),
-    ...(entity.coinPickup ? { coinPickup: true as const } : {}),
     ...(entity.movementDirection ? { movementDirection: cloneReadModelValue(entity.movementDirection) } : {}),
     ...(entity.physics ? { collisionRadius: entity.physics.radius } : {}),
-    ...(entity.physics ? { physics: cloneReadModelValue(entity.physics) } : {}),
   };
 
   return model;
@@ -803,17 +797,6 @@ export function getGameReadModel(): GameReadModel {
     gameplayProfile: cloneReadModelValue(game.gameplayProfile),
     input: cloneReadModelValue(game.input),
     settings: getSettingsReadModel(),
-    score: game.score,
-    coins: game.coins,
-    lives: game.lives,
-    maxLives: game.maxLives,
-    bestScore: game.bestScore,
-    lastRoundBaseScore: game.lastRoundBaseScore,
-    lastRoundCoinBonus: game.lastRoundCoinBonus,
-    lastRoundFinalScore: game.lastRoundFinalScore,
-    lastRoundBestScore: game.lastRoundBestScore,
-    lastGameOverWasNewBest: game.lastGameOverWasNewBest,
-    entities,
   };
 }
 

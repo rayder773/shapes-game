@@ -134,14 +134,9 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `appearance`
   - `movementDirection`
   - `collisionRadius`
-- Временно сохранены compatibility-поля:
-  - `transform`
-  - `physics`
-  - `player`
-  - `target`
-  - `lifePickup`
-  - `coinPickup`
-  - старые top-level поля snapshot-а вроде `score`, `coins`, `lives`, `entities`, `lastRoundFinalScore`.
+- Legacy compatibility-поля удалены из публичной модели:
+  - entity больше не отдает `transform`, `physics`, `player`, `target`, `lifePickup`, `coinPickup`;
+  - top-level alias-поля вроде `score`, `coins`, `lives`, `entities`, `lastRoundFinalScore` больше не входят в `GameReadModel`.
 
 ### Game Runtime Bridge
 
@@ -160,7 +155,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 - `vitest.config.ts` упрощен: тестовый hook больше не собирает snapshot вручную через `game.queries`, а вызывает read-model exports.
 - `window.__ANTI_MATCH_TEST__` пока сохранен как compatibility bridge.
 - Добавлен метод `model()` в test API.
-- `snapshot()` оставлен как alias на модель для плавной миграции.
+- `snapshot()` удален из test API; тесты используют `model()` / `gameModel()`.
 
 ### Test Helpers
 
@@ -177,37 +172,22 @@ DSL должен быть render adapter-ом, а не фундаментом п
 ### Тесты
 
 - Добавлен `test/read-model.spec.ts` для проверки контракта модели.
-- Gameplay/results/settings/device/onboarding/routing/canvas tests частично переведены на модель.
+- Gameplay/results/settings/device/onboarding/routing/canvas tests переведены на read model там, где проверяется бизнес-поведение.
 - Координаты в тестах движения переведены с legacy `transform.x/y` на `position.x/y`.
 - Проверки радиуса столкновений переведены с `physics.radius` на `collisionRadius`.
-- DOM assertions пока оставлены там, где они проверяют отображение или app shell.
+- DOM assertions оставлены там, где они проверяют отображение, UI adapter или app shell.
+- Results coverage разделен на business/model checks и overlay DOM checks.
 
 ### Проверки
 
 - `npm run test --workspace web` проходит.
-- На момент последней проверки: 11 test files passed, 36 tests passed.
+- `npm run lint --workspace web` проходит.
+- `npm run build --workspace web` проходит.
+- На момент последней проверки: 11 test files passed, 37 tests passed.
 
 ## Следующие Шаги
 
-### 1. Дочистить Тесты От Legacy Snapshot
-
-- Постепенно заменить оставшиеся обращения к legacy-полям:
-  - `state.score` -> `state.hud.score`
-  - `state.coins` -> `state.hud.coins`
-  - `state.lives` -> `state.hud.lives`
-  - `state.entities` -> `state.scene.entities`
-  - marker flags `player/target/lifePickup/coinPickup` -> `kind`
-  - `transform` -> `position` + `rotation`
-  - `physics.radius` -> `collisionRadius`
-- Оставить legacy-поля до тех пор, пока все тесты не будут переведены.
-
-### 2. Сузить DOM Assertions
-
-- В gameplay tests убрать DOM-проверки вроде текста HUD, если они проверяют бизнес-логику.
-- Перенести DOM-specific expectations в отдельные UI/shell tests.
-- Canvas smoke оставить как renderer smoke, а не как gameplay test.
-
-### 3. Сделать App-Level Model
+### 1. Сделать App-Level Model
 
 Текущая модель game-oriented. Позже можно добавить `AppModel`:
 
@@ -219,7 +199,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 Так роутинг и страницы тоже смогут тестироваться через модель, а не через DOM напрямую.
 
-### 4. Вынести UI Adapter
+### 2. Вынести UI Adapter
 
 После стабилизации tests/read model вынести из `game.ts`:
 
@@ -239,7 +219,7 @@ app.subscribe((model) => ui.render(model));
 ui.subscribe((event) => app.dispatch(event));
 ```
 
-### 5. Разделить Game Runtime
+### 3. Разделить Game Runtime
 
 После UI adapter можно безопасно дробить `game.ts`:
 
@@ -251,7 +231,7 @@ ui.subscribe((event) => app.dispatch(event));
 - analytics integration;
 - app lifecycle.
 
-### 6. Только Потом DSL / Signals / Custom ECS
+### 4. Только Потом DSL / Signals / Custom ECS
 
 Когда модель и тесты стабилизированы:
 

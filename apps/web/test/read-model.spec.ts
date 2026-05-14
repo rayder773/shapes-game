@@ -12,31 +12,21 @@ import {
 } from "./helpers";
 
 describe("game read model", () => {
-  test("exposes stable scene entities with world positions and legacy compatibility", async () => {
+  test("exposes stable scene entities with world positions", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
     await bootApp("/shapes-game/");
 
     const first = gameModel();
     const second = gameModel();
     expect(second).toEqual(first);
-
-    expect(first.scene.entities).toEqual(first.entities);
-    expect(first.hud).toEqual({
-      score: first.score,
-      coins: first.coins,
-      lives: first.lives,
-      maxLives: first.maxLives,
-      bestScore: first.bestScore,
-    });
+    expect(first.hud.score).toEqual(expect.any(Number));
+    expect(first.hud.coins).toEqual(expect.any(Number));
+    expect(first.hud.lives).toEqual(expect.any(Number));
+    expect(first.hud.maxLives).toEqual(expect.any(Number));
+    expect(first.hud.bestScore === null || typeof first.hud.bestScore === "number").toBe(true);
 
     const player = playerModel();
     expect(player.kind).toBe("player");
-    expect(player.player).toBe(true);
-    expect(player.transform).toEqual({
-      x: player.position.x,
-      y: player.position.y,
-      angle: player.rotation,
-    });
     expect(player.appearance).toBeDefined();
     expect(player.collisionRadius).toEqual(expect.any(Number));
 
@@ -62,13 +52,11 @@ describe("game read model", () => {
 
     const paused = gameModel();
     expect(paused.overlay.mode).toBe("pause");
-    expect(paused.roundResult).toEqual({
-      baseScore: paused.lastRoundBaseScore,
-      coinBonus: paused.lastRoundCoinBonus,
-      finalScore: paused.lastRoundFinalScore,
-      bestScore: paused.lastRoundBestScore,
-      wasNewBest: paused.lastGameOverWasNewBest,
-    });
+    expect(paused.roundResult.baseScore).toEqual(expect.any(Number));
+    expect(paused.roundResult.coinBonus).toEqual(expect.any(Number));
+    expect(paused.roundResult.finalScore).toEqual(expect.any(Number));
+    expect(paused.roundResult.bestScore === null || typeof paused.roundResult.bestScore === "number").toBe(true);
+    expect(paused.roundResult.wasNewBest).toEqual(expect.any(Boolean));
 
     const settings = settingsModel();
     expect(settings).toEqual(paused.settings);
