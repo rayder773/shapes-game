@@ -49,12 +49,14 @@ import {
   type AnalyticsEventType,
   type AnalyticsPayload,
 } from "./analytics-client.ts";
+import { getCurrentRoute } from "./router.ts";
 import type {
   GameReadModel,
   GameReadModelEntity,
   GameReadModelEntityKind,
   GameReadModelSettings,
 } from "./game-read-model.ts";
+import type { AppReadModel } from "./app-read-model.ts";
 
 type Shape = "circle" | "square" | "triangle";
 type ColorName = "red" | "blue" | "green";
@@ -767,6 +769,19 @@ export function getLifePickupModels(): GameReadModelEntity[] {
 
 export function getCoinPickupModels(): GameReadModelEntity[] {
   return collectEntityReadModels(game.queries.coinPickups);
+}
+
+export function getAppReadModel(): AppReadModel {
+  const route = getCurrentRoute();
+  return {
+    route,
+    game: getGameReadModel(),
+    shell: {
+      gamePageVisible: route === "game",
+      settingsPageVisible: route === "settings",
+      adminPageVisible: route === "admin",
+    },
+  };
 }
 
 export function getGameReadModel(): GameReadModel {

@@ -97,8 +97,21 @@ type AntiMatchSettingsState = {
   };
 };
 
+type AntiMatchAppShell = {
+  gamePageVisible: boolean;
+  settingsPageVisible: boolean;
+  adminPageVisible: boolean;
+};
+
+type AntiMatchAppSnapshot = {
+  route: "game" | "settings" | "admin";
+  game: AntiMatchTestSnapshot;
+  shell: AntiMatchAppShell;
+};
+
 type AntiMatchTestApi = {
   model: () => AntiMatchTestSnapshot;
+  appModel: () => AntiMatchAppSnapshot;
   getPlayer: () => AntiMatchTestEntitySnapshot | null;
   getTargets: () => AntiMatchTestEntitySnapshot[];
   getLifePickups: () => AntiMatchTestEntitySnapshot[];

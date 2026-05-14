@@ -60,6 +60,12 @@ export function gameModel() {
   return model();
 }
 
+export function appModel() {
+  const api = window.__ANTI_MATCH_TEST__;
+  expect(api).toBeDefined();
+  return api!.appModel();
+}
+
 export function sceneEntities() {
   return gameModel().scene.entities;
 }

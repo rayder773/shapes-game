@@ -12,6 +12,7 @@ function antiMatchTestHookPlugin() {
       const hookSource = `
 const __ANTI_MATCH_TEST_API__ = Object.freeze({
   model: () => getGameReadModel(),
+  appModel: () => getAppReadModel(),
   getPlayer: () => getPlayerModel(),
   getTargets: () => getTargetModels(),
   getLifePickups: () => getLifePickupModels(),

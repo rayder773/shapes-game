@@ -185,21 +185,18 @@ DSL должен быть render adapter-ом, а не фундаментом п
 - `npm run build --workspace web` проходит.
 - На момент последней проверки: 11 test files passed, 37 tests passed.
 
+### App-Level Model
+
+- Создан `src/app-read-model.ts` с типами `AppReadModelShell` и `AppReadModel`.
+- В `src/game.ts` добавлен `export function getAppReadModel()`, агрегирующий `route` + `game` + `shell`.
+- В тест-бридж (`vitest.config.ts`) добавлен `appModel: () => getAppReadModel()`.
+- В `src/vite-env.d.ts` добавлены типы `AntiMatchAppShell`, `AntiMatchAppSnapshot`, поле `appModel` в `AntiMatchTestApi`.
+- В `test/helpers.ts` добавлен хелпер `appModel()`.
+- `test/app-shell-and-routing.spec.ts` переведён с DOM-проверок видимости на `appModel().route` и `appModel().shell.*`.
+
 ## Следующие Шаги
 
-### 1. Сделать App-Level Model
-
-Текущая модель game-oriented. Позже можно добавить `AppModel`:
-
-- `route`
-- `game`
-- `settingsPage`
-- `adminPage`
-- `shell`
-
-Так роутинг и страницы тоже смогут тестироваться через модель, а не через DOM напрямую.
-
-### 2. Вынести UI Adapter
+### 1. Вынести UI Adapter
 
 После стабилизации tests/read model вынести из `game.ts`:
 
