@@ -194,17 +194,59 @@ DSL должен быть render adapter-ом, а не фундаментом п
 - В `test/helpers.ts` добавлен хелпер `appModel()`.
 - `test/app-shell-and-routing.spec.ts` переведён с DOM-проверок видимости на `appModel().route` и `appModel().shell.*`.
 
+### UI Adapter Increment
+
+- Добавлен `src/dom-game-ui.ts` как первый DOM adapter для game UI.
+- Adapter валидирует DOM-элементы canvas/HUD/overlay и наружу отдает:
+  - `render(model: AppReadModel)`;
+  - `subscribe(listener)` для semantic UI events.
+- `GameReadModel.overlay` расширен:
+  - сохранено `mode`;
+  - добавлено `view`;
+  - overlay buttons теперь несут semantic `action`, например `resume`, `restart`, `acceptOnboarding`, `openSettings`, `confirmInstall`, `dismissInstall`.
+- `game.ts` больше не рендерит HUD/overlay напрямую:
+  - удалены прямые `updateHud()`, `renderOverlay()`, `hideOverlay()` DOM-операции;
+  - runtime меняет игровое состояние и вызывает `renderApp()`;
+  - `renderApp()` строит `getAppReadModel()` и передает снимок в `ui.render(model)`.
+- DOM layer больше не является source of truth:
+  - игровая истина остается в `game.ts`;
+  - adapter держит только transient UI state для pulse/count-up/burst-анимаций.
+- Route visibility оставлена app-level моделью:
+  - `AppReadModel.shell.gamePageVisible` управляет `app-hidden` для canvas/HUD/overlay;
+  - settings/admin UI не входили в этот инкремент.
+- PWA install overlay включен в read model через active PWA overlay state.
+- DOM smoke/assertions сохранены, read-model tests дополнены проверками `overlay.view` и semantic actions.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
-### 1. Вынести UI Adapter
+### 1. Закрепить Контракт UI Adapter
 
-После стабилизации tests/read model вынести из `game.ts`:
+Сделать следующий небольшой шаг без переписывания gameplay:
 
-- DOM lookups;
-- HUD rendering;
-- overlay rendering;
-- canvas rendering;
-- button event bindings.
+- добавить отдельный `test/dom-game-ui.spec.ts`;
+- напрямую создавать DOM adapter на markup из `index.html`;
+- передавать fake `AppReadModel` в `ui.render(model)`;
+- проверять:
+  - HUD rendering;
+  - overlay rendering для onboarding/pause/gameOver;
+  - route visibility через `app-hidden`;
+  - emitted events для pause button и overlay buttons;
+  - results view без зависимости от runtime physics.
+
+Цель теста: зафиксировать adapter contract отдельно от `game.ts`, чтобы следующий разрез можно было делать увереннее.
+
+### 2. Доделать UI Adapter Boundary
+
+После отдельного adapter test постепенно убрать оставшуюся UI-сцепку из `game.ts`:
+
+- заменить direct canvas lookup в `game.ts` на canvas dependency из adapter или bootstrap layer;
+- разделить `createDomGameUi()` и canvas renderer boundary;
+- оставить keyboard/pointer/resize/fullscreen guards в runtime до отдельного input/canvas инкремента;
+- не переносить settings/admin страницы в этот шаг.
 
 Целевой формат:
 

@@ -1,6 +1,13 @@
 export type GameReadModelState = "boot" | "playing" | "paused" | "gameOver";
 export type GameReadModelOverlayMode = "install" | "onboarding" | "pause" | "gameOver" | null;
 export type GameReadModelEntityKind = "player" | "target" | "lifePickup" | "coinPickup";
+export type GameReadModelOverlayAction =
+  | "resume"
+  | "restart"
+  | "acceptOnboarding"
+  | "openSettings"
+  | "confirmInstall"
+  | "dismissInstall";
 
 export type GameReadModelPosition = {
   x: number;
@@ -58,6 +65,43 @@ export type GameReadModelHud = {
 
 export type GameReadModelOverlay = {
   mode: GameReadModelOverlayMode;
+  view: GameReadModelOverlayView | null;
+};
+
+export type GameReadModelOverlayButton = {
+  label: string;
+  action: GameReadModelOverlayAction;
+};
+
+export type GameReadModelOverlayFooterPrompt = {
+  message: string;
+  button: GameReadModelOverlayButton;
+};
+
+export type GameReadModelOverlayInstallButton = {
+  label: string;
+  surface: "pause" | "postGameOver";
+};
+
+export type GameReadModelOverlayResults = {
+  baseScore: number;
+  coins: number;
+  coinBonus: number;
+  finalScore: number;
+  bestScore: number;
+  wasNewBest: boolean;
+};
+
+export type GameReadModelOverlayView = {
+  layout: "modal" | "sheet";
+  variant: "default" | "ios-hint" | "record" | "results" | "results-record";
+  title: string;
+  message: string;
+  tips: string[];
+  buttons: GameReadModelOverlayButton[];
+  installButton: GameReadModelOverlayInstallButton | null;
+  footerPrompt: GameReadModelOverlayFooterPrompt | null;
+  results: GameReadModelOverlayResults | null;
 };
 
 export type GameReadModelScene = {

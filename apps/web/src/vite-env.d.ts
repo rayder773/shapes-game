@@ -38,6 +38,7 @@ type AntiMatchTestSnapshot = {
   };
   overlay: {
     mode: "install" | "onboarding" | "pause" | "gameOver" | null;
+    view: AntiMatchOverlayView | null;
   };
   scene: {
     entities: AntiMatchTestEntitySnapshot[];
@@ -67,6 +68,38 @@ type AntiMatchTestSnapshot = {
   };
   input: Record<"up" | "down" | "left" | "right", boolean>;
   settings: AntiMatchSettingsState | null;
+};
+
+type AntiMatchOverlayAction =
+  | "resume"
+  | "restart"
+  | "acceptOnboarding"
+  | "openSettings"
+  | "confirmInstall"
+  | "dismissInstall";
+
+type AntiMatchOverlayButton = {
+  label: string;
+  action: AntiMatchOverlayAction;
+};
+
+type AntiMatchOverlayView = {
+  layout: "modal" | "sheet";
+  variant: "default" | "ios-hint" | "record" | "results" | "results-record";
+  title: string;
+  message: string;
+  tips: string[];
+  buttons: AntiMatchOverlayButton[];
+  installButton: { label: string; surface: "pause" | "postGameOver" } | null;
+  footerPrompt: { message: string; button: AntiMatchOverlayButton } | null;
+  results: {
+    baseScore: number;
+    coins: number;
+    coinBonus: number;
+    finalScore: number;
+    bestScore: number;
+    wasNewBest: boolean;
+  } | null;
 };
 
 type AntiMatchSettingsState = {

@@ -53,6 +53,17 @@ describe("results and best score", () => {
     await bootApp("/shapes-game/");
 
     const state = await playUntilGameOver();
+    expect(state.overlay.view).toMatchObject({
+      title: "Результаты",
+      buttons: [{ label: "Начать заново", action: "restart" }],
+      results: {
+        baseScore: state.roundResult.baseScore,
+        coins: state.hud.coins,
+        coinBonus: state.roundResult.coinBonus,
+        finalScore: state.roundResult.finalScore,
+        bestScore: state.roundResult.bestScore,
+      },
+    });
     expect(document.getElementById("overlay-title")?.textContent).toBe("Результаты");
     expect(document.getElementById("results-screen")?.hasAttribute("hidden")).toBe(false);
     expect(document.getElementById("results-base-value")?.textContent).toBe(String(state.roundResult.baseScore));

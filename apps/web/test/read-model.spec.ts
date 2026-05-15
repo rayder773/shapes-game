@@ -45,6 +45,10 @@ describe("game read model", () => {
     await bootApp("/shapes-game/");
 
     expect(gameModel().overlay.mode).toBe("onboarding");
+    expect(gameModel().overlay.view).toMatchObject({
+      title: "Правила",
+      buttons: [{ label: "Понятно", action: "acceptOnboarding" }],
+    });
     expect(gameModel().state).toBe("paused");
 
     acceptOnboarding();
@@ -52,6 +56,14 @@ describe("game read model", () => {
 
     const paused = gameModel();
     expect(paused.overlay.mode).toBe("pause");
+    expect(paused.overlay.view).toMatchObject({
+      title: "Пауза",
+      buttons: [
+        { label: "Продолжить", action: "resume" },
+        { label: "Настройки", action: "openSettings" },
+        { label: "Начать заново", action: "restart" },
+      ],
+    });
     expect(paused.roundResult.baseScore).toEqual(expect.any(Number));
     expect(paused.roundResult.coinBonus).toEqual(expect.any(Number));
     expect(paused.roundResult.finalScore).toEqual(expect.any(Number));

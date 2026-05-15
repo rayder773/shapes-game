@@ -34,13 +34,13 @@ import {
   type PwaInstallOverlayModel,
 } from "./pwa.ts";
 import {
-  createLifeIconSvgMarkup,
   getCoinHexagonPoints,
   getCoinInnerRadius,
   getCoinSpokes,
   getLifeCrossSegments,
   getLifeDiamondPoints,
 } from "./icons.ts";
+import { createDomGameUi, type DomGameUiEvent } from "./dom-game-ui.ts";
 import {
   flushAnalyticsEvents,
   getAnalyticsSessionId,
@@ -54,6 +54,7 @@ import type {
   GameReadModel,
   GameReadModelEntity,
   GameReadModelEntityKind,
+  GameReadModelOverlayView,
   GameReadModelSettings,
 } from "./game-read-model.ts";
 import type { AppReadModel } from "./app-read-model.ts";
@@ -331,8 +332,6 @@ const MAX_FRAME_DT = 1 / 24;
 const MIN_POINTER_TARGET_DISTANCE = 10;
 const PLAYER_BOOST_DURATION_MS = 350;
 const DAMAGE_INVULNERABILITY_MS = 900;
-const HUD_LIVES_PULSE_MS = 320;
-const HUD_COINS_PULSE_MS = 360;
 const DOUBLE_TAP_WINDOW_MS = 300;
 const DOUBLE_TAP_RADIUS_PX = 40;
 const LINEAR_DAMPING = 0;
@@ -374,203 +373,7 @@ if (!context2d) {
   throw new Error("2D context is not available");
 }
 const ctx = context2d;
-
-const hudScoreElement = document.getElementById("hud-score");
-if (!(hudScoreElement instanceof HTMLParagraphElement)) {
-  throw new Error("HUD score element not found");
-}
-const hudScore = hudScoreElement;
-
-const hudBestElement = document.getElementById("hud-best");
-if (!(hudBestElement instanceof HTMLDivElement)) {
-  throw new Error("HUD best score element not found");
-}
-const hudBest = hudBestElement;
-
-const hudBestValueElement = document.getElementById("hud-best-value");
-if (!(hudBestValueElement instanceof HTMLSpanElement)) {
-  throw new Error("HUD best score value element not found");
-}
-const hudBestValue = hudBestValueElement;
-
-const hudCoinsElement = document.getElementById("hud-coins");
-if (!(hudCoinsElement instanceof HTMLDivElement)) {
-  throw new Error("HUD coins element not found");
-}
-const hudCoins = hudCoinsElement;
-
-const hudCoinsValueElement = document.getElementById("hud-coins-value");
-if (!(hudCoinsValueElement instanceof HTMLSpanElement)) {
-  throw new Error("HUD coins value element not found");
-}
-const hudCoinsValue = hudCoinsValueElement;
-
-const hudLivesElement = document.getElementById("hud-lives");
-if (!(hudLivesElement instanceof HTMLDivElement)) {
-  throw new Error("HUD lives element not found");
-}
-const hudLives = hudLivesElement;
-const hudElement = hudLives.closest(".hud");
-if (!(hudElement instanceof HTMLDivElement)) {
-  throw new Error("HUD container not found");
-}
-const hud = hudElement;
-
-const pauseButtonElement = document.getElementById("pause-button");
-if (!(pauseButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Pause button element not found");
-}
-const pauseButton = pauseButtonElement;
-
-const overlayElement = document.getElementById("overlay");
-if (!(overlayElement instanceof HTMLDivElement)) {
-  throw new Error("Overlay element not found");
-}
-const overlay = overlayElement;
-
-const modalElement = overlay.querySelector(".modal");
-if (!(modalElement instanceof HTMLDivElement)) {
-  throw new Error("Modal element not found");
-}
-const modal = modalElement;
-
-const overlayTitleElement = document.getElementById("overlay-title");
-if (!(overlayTitleElement instanceof HTMLHeadingElement)) {
-  throw new Error("Overlay title element not found");
-}
-const overlayTitle = overlayTitleElement;
-
-const overlayMessageElement = document.getElementById("overlay-message");
-if (!(overlayMessageElement instanceof HTMLParagraphElement)) {
-  throw new Error("Overlay message element not found");
-}
-const overlayMessage = overlayMessageElement;
-
-const resultsScreenElement = document.getElementById("results-screen");
-if (!(resultsScreenElement instanceof HTMLElement)) {
-  throw new Error("Results screen element not found");
-}
-const resultsScreen = resultsScreenElement;
-
-const resultsBaseRowElement = document.getElementById("results-base-row");
-if (!(resultsBaseRowElement instanceof HTMLDivElement)) {
-  throw new Error("Results base row element not found");
-}
-const resultsBaseRow = resultsBaseRowElement;
-
-const resultsCoinsRowElement = document.getElementById("results-coins-row");
-if (!(resultsCoinsRowElement instanceof HTMLDivElement)) {
-  throw new Error("Results coins row element not found");
-}
-const resultsCoinsRow = resultsCoinsRowElement;
-
-const resultsBonusRowElement = document.getElementById("results-bonus-row");
-if (!(resultsBonusRowElement instanceof HTMLDivElement)) {
-  throw new Error("Results bonus row element not found");
-}
-const resultsBonusRow = resultsBonusRowElement;
-
-const resultsBaseValueElement = document.getElementById("results-base-value");
-if (!(resultsBaseValueElement instanceof HTMLElement)) {
-  throw new Error("Results base value element not found");
-}
-const resultsBaseValue = resultsBaseValueElement;
-
-const resultsCoinsValueElement = document.getElementById("results-coins-value");
-if (!(resultsCoinsValueElement instanceof HTMLElement)) {
-  throw new Error("Results coins value element not found");
-}
-const resultsCoinsValue = resultsCoinsValueElement;
-
-const resultsBonusValueElement = document.getElementById("results-bonus-value");
-if (!(resultsBonusValueElement instanceof HTMLElement)) {
-  throw new Error("Results bonus value element not found");
-}
-const resultsBonusValue = resultsBonusValueElement;
-
-const resultsFinalCardElement = document.getElementById("results-final-card");
-if (!(resultsFinalCardElement instanceof HTMLDivElement)) {
-  throw new Error("Results final card element not found");
-}
-const resultsFinalCard = resultsFinalCardElement;
-
-const resultsFinalValueElement = document.getElementById("results-final-value");
-if (!(resultsFinalValueElement instanceof HTMLElement)) {
-  throw new Error("Results final value element not found");
-}
-const resultsFinalValue = resultsFinalValueElement;
-
-const resultsMetaElement = document.getElementById("results-meta");
-if (!(resultsMetaElement instanceof HTMLDivElement)) {
-  throw new Error("Results meta element not found");
-}
-const resultsMeta = resultsMetaElement;
-
-const resultsBestValueElement = document.getElementById("results-best-value");
-if (!(resultsBestValueElement instanceof HTMLElement)) {
-  throw new Error("Results best value element not found");
-}
-const resultsBestValue = resultsBestValueElement;
-
-const resultsRecordBadgeElement = document.getElementById("results-record-badge");
-if (!(resultsRecordBadgeElement instanceof HTMLDivElement)) {
-  throw new Error("Results record badge element not found");
-}
-const resultsRecordBadge = resultsRecordBadgeElement;
-
-const resultsBurstElement = document.getElementById("results-burst");
-if (!(resultsBurstElement instanceof HTMLDivElement)) {
-  throw new Error("Results burst element not found");
-}
-const resultsBurst = resultsBurstElement;
-
-const overlayFooterElement = document.getElementById("overlay-footer");
-if (!(overlayFooterElement instanceof HTMLDivElement)) {
-  throw new Error("Overlay footer element not found");
-}
-const overlayFooter = overlayFooterElement;
-
-const overlayFooterMessageElement = document.getElementById("overlay-footer-message");
-if (!(overlayFooterMessageElement instanceof HTMLParagraphElement)) {
-  throw new Error("Overlay footer message element not found");
-}
-const overlayFooterMessage = overlayFooterMessageElement;
-
-const overlayFooterButtonElement = document.getElementById("overlay-footer-button");
-if (!(overlayFooterButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Overlay footer button element not found");
-}
-const overlayFooterButton = overlayFooterButtonElement;
-
-const overlayTipsElement = document.getElementById("overlay-tips");
-if (!(overlayTipsElement instanceof HTMLUListElement)) {
-  throw new Error("Overlay tips element not found");
-}
-const overlayTips = overlayTipsElement;
-
-const overlayPrimaryButtonElement = document.getElementById("overlay-primary-button");
-if (!(overlayPrimaryButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Overlay primary button element not found");
-}
-const overlayPrimaryButton = overlayPrimaryButtonElement;
-
-const overlaySecondaryButtonElement = document.getElementById("overlay-secondary-button");
-if (!(overlaySecondaryButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Overlay secondary button element not found");
-}
-const overlaySecondaryButton = overlaySecondaryButtonElement;
-
-const overlayTertiaryButtonElement = document.getElementById("overlay-tertiary-button");
-if (!(overlayTertiaryButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Overlay tertiary button element not found");
-}
-const overlayTertiaryButton = overlayTertiaryButtonElement;
-
-const overlayInstallButtonElement = document.getElementById("overlay-install-button");
-if (!(overlayInstallButtonElement instanceof HTMLButtonElement)) {
-  throw new Error("Overlay install button element not found");
-}
-const overlayInstallButton = overlayInstallButtonElement;
+const ui = createDomGameUi();
 const rootStyle = document.documentElement.style;
 const settingsStateListeners = new Set<SettingsStateListener>();
 const pwa = createPwaController();
@@ -582,9 +385,7 @@ let hasStartedFrameLoop = false;
 let hasInitializedGameSession = false;
 let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
-let hudLivesPulseTimeoutId: number | null = null;
-let hudCoinsPulseTimeoutId: number | null = null;
-let resultsAnimationToken = 0;
+let lastPauseWasAutoPaused = false;
 
 function createRuntime(): Runtime {
   const ecsWorld = new ECSWorld<GameEntity>();
@@ -784,6 +585,98 @@ export function getAppReadModel(): AppReadModel {
   };
 }
 
+function createInstallOverlayView(): GameReadModelOverlayView | null {
+  const activeOverlay = pwa.getActiveOverlayModel();
+  if (!activeOverlay) return null;
+
+  const pwaView = createPwaOverlayViewModel(activeOverlay);
+  return {
+    layout: pwaView.layout,
+    variant: pwaView.variant,
+    title: pwaView.title,
+    message: pwaView.message,
+    tips: pwaView.tips,
+    buttons: [
+      { label: pwaView.primaryLabel, action: "confirmInstall" },
+      ...(pwaView.secondaryLabel ? [{ label: pwaView.secondaryLabel, action: "dismissInstall" } as const] : []),
+    ],
+    installButton: null,
+    footerPrompt: null,
+    results: null,
+  };
+}
+
+function createOverlayView(): GameReadModelOverlayView | null {
+  if (overlayMode === "onboarding") {
+    return {
+      layout: "modal",
+      variant: "default",
+      title: "Правила",
+      message: "",
+      tips: GAME_RULES,
+      buttons: [{ label: "Понятно", action: "acceptOnboarding" }],
+      installButton: null,
+      footerPrompt: null,
+      results: null,
+    };
+  }
+
+  if (overlayMode === "pause") {
+    const installButtonState = pwa.getPauseInstallButtonState();
+    return {
+      layout: "modal",
+      variant: "default",
+      title: "Пауза",
+      message: lastPauseWasAutoPaused ? "Игра остановлена." : "",
+      tips: GAME_RULES,
+      buttons: [
+        { label: "Продолжить", action: "resume" },
+        { label: "Настройки", action: "openSettings" },
+        { label: "Начать заново", action: "restart" },
+      ],
+      installButton: installButtonState.visible ? { label: installButtonState.label, surface: "pause" } : null,
+      footerPrompt: null,
+      results: null,
+    };
+  }
+
+  if (overlayMode === "gameOver") {
+    const bestScore = game.lastRoundBestScore ?? game.lastRoundFinalScore;
+    return {
+      layout: "modal",
+      variant: game.lastGameOverWasNewBest ? "results-record" : "results",
+      title: "Результаты",
+      message: "",
+      tips: [],
+      buttons: [{ label: "Начать заново", action: "restart" }],
+      installButton: null,
+      footerPrompt: game.gameOverInstallPrompt
+        ? {
+            message: game.gameOverInstallPrompt.message,
+            button: {
+              label: game.gameOverInstallPrompt.buttonLabel,
+              action: "confirmInstall",
+            },
+          }
+        : null,
+      results: {
+        baseScore: game.lastRoundBaseScore,
+        coins: game.coins,
+        coinBonus: game.lastRoundCoinBonus,
+        finalScore: game.lastRoundFinalScore,
+        bestScore,
+        wasNewBest: game.lastGameOverWasNewBest,
+      },
+    };
+  }
+
+  if (overlayMode === "install") {
+    return createInstallOverlayView();
+  }
+
+  return null;
+}
+
 export function getGameReadModel(): GameReadModel {
   const entities = getSceneEntityReadModels();
 
@@ -798,6 +691,7 @@ export function getGameReadModel(): GameReadModel {
     },
     overlay: {
       mode: overlayMode,
+      view: createOverlayView(),
     },
     scene: {
       entities,
@@ -813,6 +707,10 @@ export function getGameReadModel(): GameReadModel {
     input: cloneReadModelValue(game.input),
     settings: getSettingsReadModel(),
   };
+}
+
+function renderApp(): void {
+  ui.render(getAppReadModel());
 }
 
 function getSavedOverridesForProfile(profileKey: GameplayProfileKey) {
@@ -912,58 +810,6 @@ function initializeSettingsState(savedSettings: SavedGameplaySettings): void {
     },
   });
   notifySettingsStateListeners();
-}
-
-function renderLivesHud(): void {
-  hudLives.replaceChildren();
-  hudLives.setAttribute("aria-label", `Жизни: ${game.lives} из ${game.maxLives}`);
-  const lifeMarkup = createLifeIconSvgMarkup();
-
-  for (let index = 0; index < game.maxLives; index += 1) {
-    const lifeSlot = document.createElement("span");
-    lifeSlot.className = "hud-life";
-    lifeSlot.innerHTML = lifeMarkup;
-    lifeSlot.dataset.filled = index < game.lives ? "true" : "false";
-    hudLives.append(lifeSlot);
-  }
-}
-
-function pulseLivesHud(): void {
-  hudLives.dataset.pulse = "true";
-
-  if (hudLivesPulseTimeoutId !== null) {
-    window.clearTimeout(hudLivesPulseTimeoutId);
-  }
-
-  hudLivesPulseTimeoutId = window.setTimeout(() => {
-    delete hudLives.dataset.pulse;
-    hudLivesPulseTimeoutId = null;
-  }, HUD_LIVES_PULSE_MS);
-}
-
-function pulseCoinsHud(): void {
-  hudCoins.dataset.pulse = "true";
-
-  if (hudCoinsPulseTimeoutId !== null) {
-    window.clearTimeout(hudCoinsPulseTimeoutId);
-  }
-
-  hudCoinsPulseTimeoutId = window.setTimeout(() => {
-    delete hudCoins.dataset.pulse;
-    hudCoinsPulseTimeoutId = null;
-  }, HUD_COINS_PULSE_MS);
-}
-
-function updateHud(): void {
-  hudScore.textContent = `Счет: ${game.score}`;
-  const bestScore = game.bestScore ?? 0;
-  hudBestValue.textContent = String(bestScore);
-  hudBest.setAttribute("aria-label", `Лучший счет: ${bestScore}`);
-  hudCoinsValue.textContent = String(game.coins);
-  hudCoins.setAttribute("aria-label", `Монеты: ${game.coins}`);
-  renderLivesHud();
-  pauseButton.textContent = game.state === "paused" ? "▶" : "II";
-  pauseButton.setAttribute("aria-label", game.state === "paused" ? "Продолжить игру" : "Поставить игру на паузу");
 }
 
 function getSettingsViewState(): SettingsViewState | null {
@@ -1411,23 +1257,6 @@ function clearInputState(): void {
   setDirectionalInput("right", false);
 }
 
-function setOverlayTips(items: string[]): void {
-  overlayTips.replaceChildren();
-
-  if (items.length === 0) {
-    overlayTips.hidden = true;
-    return;
-  }
-
-  for (const item of items) {
-    const listItem = document.createElement("li");
-    listItem.textContent = item;
-    overlayTips.append(listItem);
-  }
-
-  overlayTips.hidden = false;
-}
-
 function areRulesAccepted(): boolean {
   return window.localStorage.getItem(RULES_STORAGE_KEY) === "true";
 }
@@ -1458,128 +1287,6 @@ function saveBestScore(score: number): void {
   window.localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(Math.max(0, Math.floor(score))));
 }
 
-function waitForMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-async function animateCount(
-  element: HTMLElement,
-  token: number,
-  to: number,
-  options: {
-    prefix?: string;
-    durationMs?: number;
-  } = {},
-): Promise<void> {
-  const prefix = options.prefix ?? "";
-  const durationMs = options.durationMs ?? 420;
-  const fromText = element.textContent?.replace(/[^\d-]/g, "") ?? "0";
-  const from = Number(fromText) || 0;
-
-  if (from === to) {
-    element.textContent = `${prefix}${to}`;
-    return;
-  }
-
-  const startTime = performance.now();
-
-  await new Promise<void>((resolve) => {
-    const tick = (now: number) => {
-      if (token !== resultsAnimationToken) {
-        resolve();
-        return;
-      }
-
-      const progress = Math.min(1, (now - startTime) / durationMs);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const value = Math.round(from + (to - from) * eased);
-      element.textContent = `${prefix}${value}`;
-
-      if (progress < 1) {
-        window.requestAnimationFrame(tick);
-      } else {
-        resolve();
-      }
-    };
-
-    window.requestAnimationFrame(tick);
-  });
-}
-
-function resetResultsScreen(): void {
-  resultsAnimationToken += 1;
-  resultsScreen.hidden = true;
-  resultsBurst.replaceChildren();
-  resultsBaseRow.classList.remove("is-visible");
-  resultsCoinsRow.classList.remove("is-visible");
-  resultsBonusRow.classList.remove("is-visible");
-  resultsFinalCard.classList.remove("is-visible");
-  resultsMeta.classList.remove("is-visible");
-  resultsBaseValue.textContent = "0";
-  resultsCoinsValue.textContent = "0";
-  resultsBonusValue.textContent = "+0";
-  resultsFinalValue.textContent = "0";
-  resultsBestValue.textContent = "0";
-  resultsRecordBadge.hidden = true;
-}
-
-function launchCoinBurst(): void {
-  resultsBurst.replaceChildren();
-
-  for (let index = 0; index < 8; index += 1) {
-    const particle = document.createElement("span");
-    particle.className = "results-burst-particle";
-    const angle = (Math.PI * 2 * index) / 8;
-    const distance = 30 + (index % 2) * 16;
-    particle.style.setProperty("--burst-x", `${Math.cos(angle) * distance}px`);
-    particle.style.setProperty("--burst-y", `${Math.sin(angle) * distance}px`);
-    particle.style.animationDelay = `${index * 20}ms`;
-    resultsBurst.append(particle);
-  }
-}
-
-async function playResultsScreenAnimation(): Promise<void> {
-  const token = ++resultsAnimationToken;
-  const coinBonus = game.lastRoundCoinBonus;
-  const bestScore = game.lastRoundBestScore ?? game.lastRoundFinalScore;
-
-  resultsScreen.hidden = false;
-  resultsBaseValue.textContent = String(game.lastRoundBaseScore);
-  resultsCoinsValue.textContent = String(game.coins);
-  resultsBonusValue.textContent = "+0";
-  resultsFinalValue.textContent = "0";
-  resultsBestValue.textContent = String(bestScore);
-  resultsRecordBadge.hidden = true;
-
-  resultsBaseRow.classList.add("is-visible");
-  await waitForMs(180);
-  if (token !== resultsAnimationToken) return;
-
-  resultsCoinsRow.classList.add("is-visible");
-  await waitForMs(180);
-  if (token !== resultsAnimationToken) return;
-
-  resultsBonusRow.classList.add("is-visible");
-  launchCoinBurst();
-  await animateCount(resultsBonusValue, token, coinBonus, {
-    prefix: "+",
-    durationMs: Math.max(280, Math.min(560, 220 + game.coins * 40)),
-  });
-  if (token !== resultsAnimationToken) return;
-
-  resultsFinalCard.classList.add("is-visible");
-  await animateCount(resultsFinalValue, token, game.lastRoundFinalScore, {
-    durationMs: Math.max(420, Math.min(760, 360 + game.lastRoundFinalScore * 12)),
-  });
-  if (token !== resultsAnimationToken) return;
-
-  resultsMeta.classList.add("is-visible");
-  resultsBestValue.textContent = String(bestScore);
-  resultsRecordBadge.hidden = !game.lastGameOverWasNewBest;
-}
-
 function continueEntryOverlayFlow(): void {
   if (!areRulesAccepted()) {
     startOnboarding();
@@ -1593,109 +1300,23 @@ function continueEntryOverlayFlow(): void {
 
 function showOnboardingOverlay(): void {
   overlayMode = "onboarding";
-  renderOverlay({
-    layout: "modal",
-    variant: "default",
-    title: "Правила",
-    message: "",
-    tips: GAME_RULES,
-    primaryLabel: "Понятно",
-    secondaryLabel: null,
-    tertiaryLabel: null,
-    installButton: null,
-    footerPrompt: null,
-  });
-}
-
-function renderOverlay(model: {
-  layout: "modal" | "sheet";
-  variant: "default" | "ios-hint" | "record" | "results" | "results-record";
-  title: string;
-  message: string;
-  tips: string[];
-  primaryLabel: string;
-  secondaryLabel: string | null;
-  tertiaryLabel: string | null;
-  installButton: { label: string } | null;
-  footerPrompt: PwaInlineInstallPrompt | null;
-}): void {
-  overlay.dataset.layout = model.layout;
-  overlay.dataset.variant = model.variant;
-  overlayTitle.textContent = model.title;
-  overlayMessage.textContent = model.message;
-  overlayMessage.hidden = model.message.length === 0;
-  resetResultsScreen();
-  setOverlayTips(model.tips);
-  overlayPrimaryButton.textContent = model.primaryLabel;
-  overlaySecondaryButton.textContent = model.secondaryLabel ?? "";
-  overlaySecondaryButton.hidden = model.secondaryLabel === null;
-  overlayTertiaryButton.textContent = model.tertiaryLabel ?? "";
-  overlayTertiaryButton.hidden = model.tertiaryLabel === null;
-  overlayInstallButton.textContent = model.installButton?.label ?? "";
-  overlayInstallButton.hidden = model.installButton === null;
-  overlayFooterMessage.textContent = model.footerPrompt?.message ?? "";
-  overlayFooterButton.textContent = model.footerPrompt?.buttonLabel ?? "";
-  overlayFooter.hidden = model.footerPrompt === null;
-  overlayPrimaryButton.disabled = false;
-  overlaySecondaryButton.disabled = false;
-  overlayTertiaryButton.disabled = false;
-  overlayInstallButton.disabled = false;
-  overlayFooterButton.disabled = false;
-  overlay.classList.add("visible");
-  overlay.setAttribute("aria-hidden", "false");
+  renderApp();
 }
 
 function showPauseOverlay(autoPaused: boolean): void {
   overlayMode = "pause";
-  const installButtonState = pwa.getPauseInstallButtonState();
-  renderOverlay({
-    layout: "modal",
-    variant: "default",
-    title: "Пауза",
-    message: autoPaused ? "Игра остановлена." : "",
-    tips: GAME_RULES,
-    primaryLabel: "Продолжить",
-    secondaryLabel: "Настройки",
-    tertiaryLabel: "Начать заново",
-    installButton: installButtonState.visible ? { label: installButtonState.label } : null,
-    footerPrompt: null,
-  });
+  lastPauseWasAutoPaused = autoPaused;
+  renderApp();
 }
 
 function showGameOverOverlay(): void {
   overlayMode = "gameOver";
-  renderOverlay({
-    layout: "modal",
-    variant: game.lastGameOverWasNewBest ? "results-record" : "results",
-    title: "Результаты",
-    message: "",
-    tips: [],
-    primaryLabel: "Начать заново",
-    secondaryLabel: null,
-    tertiaryLabel: null,
-    installButton: null,
-    footerPrompt: game.gameOverInstallPrompt,
-  });
-  void playResultsScreenAnimation();
+  renderApp();
 }
 
 function hideOverlay(): void {
   overlayMode = null;
-  delete overlay.dataset.layout;
-  delete overlay.dataset.variant;
-  setOverlayTips([]);
-  overlayMessage.hidden = false;
-  overlayPrimaryButton.disabled = false;
-  overlaySecondaryButton.disabled = false;
-  overlayTertiaryButton.disabled = false;
-  overlayInstallButton.disabled = false;
-  overlayFooterButton.disabled = false;
-  overlayTertiaryButton.hidden = true;
-  overlayInstallButton.hidden = true;
-  overlayFooter.hidden = true;
-  resetResultsScreen();
-  overlay.classList.remove("visible");
-  overlay.setAttribute("aria-hidden", "true");
+  renderApp();
 }
 
 function pauseGame(autoPaused = false): void {
@@ -1708,7 +1329,6 @@ function pauseGame(autoPaused = false): void {
   clearInputState();
   clearActiveTouchInputs();
   showPauseOverlay(autoPaused);
-  updateHud();
   trackGameplayEvent("game.round_paused", {
     auto_paused: autoPaused,
   });
@@ -1724,7 +1344,7 @@ function resumeGame(): void {
   game.accumulator = 0;
   game.lastFrameTime = performance.now();
   game.state = "playing";
-  updateHud();
+  renderApp();
   trackGameplayEvent("game.round_resumed");
 }
 
@@ -1735,7 +1355,6 @@ function startOnboarding(): void {
   clearInputState();
   clearActiveTouchInputs();
   showOnboardingOverlay();
-  updateHud();
 }
 
 function showExternalOverlay(model: PwaInstallOverlayModel): void {
@@ -1745,13 +1364,7 @@ function showExternalOverlay(model: PwaInstallOverlayModel): void {
     game.accumulator = 0;
     clearInputState();
     clearActiveTouchInputs();
-    renderOverlay({
-      ...createPwaOverlayViewModel(model),
-      tertiaryLabel: null,
-      installButton: null,
-      footerPrompt: null,
-    });
-    updateHud();
+    renderApp();
     return;
   }
 
@@ -1760,13 +1373,7 @@ function showExternalOverlay(model: PwaInstallOverlayModel): void {
   game.lastFrameTime = performance.now();
   clearInputState();
   clearActiveTouchInputs();
-  renderOverlay({
-    ...createPwaOverlayViewModel(model),
-    tertiaryLabel: null,
-    installButton: null,
-    footerPrompt: null,
-  });
-  updateHud();
+  renderApp();
 }
 
 function applyOverlayFlowResult(result: PwaActionResult): void {
@@ -1781,18 +1388,15 @@ function applyOverlayFlowResult(result: PwaActionResult): void {
 
   if (result.target === "pause" && game.state === "paused") {
     showPauseOverlay(false);
-    updateHud();
     return;
   }
 
   if (result.target === "gameOver") {
     showGameOverOverlay();
-    updateHud();
     return;
   }
 
   hideOverlay();
-  updateHud();
 }
 
 function togglePauseGame(): void {
@@ -2389,7 +1993,7 @@ function togglePauseGame(): void {
 
         destroyFigureEntity(target);
         game.score += 1;
-        updateHud();
+        renderApp();
         trackGameplayEvent("game.target_consumed", {
           score_delta: 1,
           targets_remaining: [...game.queries.targets].length,
@@ -2415,7 +2019,7 @@ function togglePauseGame(): void {
         game.lives = Math.max(0, game.lives - 1);
         game.damageInvulnerabilityExpiresAt = performance.now() + DAMAGE_INVULNERABILITY_MS;
         game.queues.collisionEvents.length = 0;
-        updateHud();
+        renderApp();
         trackGameplayEvent("game.life_lost", {
           lives_lost: 1,
         });
@@ -2432,11 +2036,9 @@ function togglePauseGame(): void {
         const livesBeforeCollection = game.lives;
         if (game.lives < game.maxLives) {
           game.lives += 1;
-        } else {
-          pulseLivesHud();
         }
 
-        updateHud();
+        renderApp();
         trackGameplayEvent("game.life_collected", {
           lives_added: game.lives - livesBeforeCollection,
         });
@@ -2450,8 +2052,7 @@ function togglePauseGame(): void {
 
         destroyFigureEntity(coinEntity);
         game.coins += 1;
-        pulseCoinsHud();
-        updateHud();
+        renderApp();
         trackGameplayEvent("game.coin_collected", {
           coins_added: 1,
         });
@@ -2490,7 +2091,6 @@ function togglePauseGame(): void {
         game.accumulator = 0;
         game.damageInvulnerabilityExpiresAt = 0;
         showGameOverOverlay();
-        updateHud();
       }
     }
   }
@@ -2790,15 +2390,9 @@ function togglePauseGame(): void {
     game.queues = createQueues();
     game.playerBoostExpiresAt = 0;
     game.damageInvulnerabilityExpiresAt = 0;
-    delete hudCoins.dataset.pulse;
-    if (hudCoinsPulseTimeoutId !== null) {
-      window.clearTimeout(hudCoinsPulseTimeoutId);
-      hudCoinsPulseTimeoutId = null;
-    }
     clearInputState();
     clearActiveTouchInputs();
     hideOverlay();
-    updateHud();
   }
 
   function seedWorld(): void {
@@ -2868,12 +2462,6 @@ function togglePauseGame(): void {
     requestAnimationFrame(frame);
   }
 
-  function setGameUiVisible(visible: boolean): void {
-    canvas.classList.toggle("app-hidden", !visible);
-    hud.classList.toggle("app-hidden", !visible);
-    overlay.classList.toggle("app-hidden", !visible);
-  }
-
   function startGameSession(): void {
     scheduleInitialFullscreenAttempt();
     restartGame();
@@ -2885,7 +2473,7 @@ function togglePauseGame(): void {
   export function enterNonGamePage(): void {
     isGameRouteActive = false;
     pwa.setGameRouteActive(false);
-    setGameUiVisible(false);
+    renderApp();
 
     if (game.state === "playing") {
       pauseGame(true);
@@ -2899,7 +2487,7 @@ function togglePauseGame(): void {
   export function enterGamePage(): void {
     isGameRouteActive = true;
     pwa.setGameRouteActive(true);
-    setGameUiVisible(true);
+    renderApp();
 
     if (!hasInitializedGameSession || shouldRestartGameOnNextGameRoute) {
       shouldRestartGameOnNextGameRoute = false;
@@ -2907,7 +2495,7 @@ function togglePauseGame(): void {
       return;
     }
 
-    updateHud();
+    renderApp();
   }
 
   function setInputKey(key: string, isPressed: boolean): void {
@@ -2976,80 +2564,56 @@ function togglePauseGame(): void {
     resizeCanvas();
   });
 
-  pauseButton.addEventListener("click", () => {
-    retryFullscreenOnUserGesture();
-    togglePauseGame();
-  });
-
-  overlayPrimaryButton.addEventListener("click", () => {
+  function handleUiEvent(event: DomGameUiEvent): void {
     retryFullscreenOnUserGesture();
 
-    if (overlayMode === "install") {
+    if (event.type === "pause-toggle") {
+      togglePauseGame();
+      return;
+    }
+
+    if (event.type === "open-install-flow") {
+      void pwa.openInstallFlow(event.surface).then(applyOverlayFlowResult);
+      return;
+    }
+
+    if (event.action === "confirmInstall") {
+      if (overlayMode === "gameOver") {
+        void pwa.openInstallFlow("postGameOver").then(applyOverlayFlowResult);
+        return;
+      }
+
       void pwa.confirmOverlay().then(applyOverlayFlowResult);
       return;
     }
 
-    if (overlayMode === "onboarding") {
+    if (event.action === "dismissInstall") {
+      applyOverlayFlowResult(pwa.dismissOverlay());
+      return;
+    }
+
+    if (event.action === "acceptOnboarding") {
       setRulesAccepted();
       resumeGame();
       return;
     }
 
-    if (overlayMode === "pause") {
+    if (event.action === "resume") {
       resumeGame();
       return;
     }
 
-    if (overlayMode === "gameOver") {
-      restartGame();
-    }
-  });
-
-  overlaySecondaryButton.addEventListener("click", () => {
-    retryFullscreenOnUserGesture();
-
-    if (overlayMode === "install") {
-      applyOverlayFlowResult(pwa.dismissOverlay());
-      return;
-    }
-
-    if (overlayMode === "pause") {
+    if (event.action === "openSettings") {
       openSettingsListener?.();
       return;
     }
 
-    restartGame();
-  });
-
-  overlayTertiaryButton.addEventListener("click", () => {
-    retryFullscreenOnUserGesture();
-
-    if (overlayMode !== "pause") {
-      return;
+    if (event.action === "restart") {
+      restartGame();
     }
+  }
 
-    restartGame();
-  });
-
-  overlayInstallButton.addEventListener("click", () => {
-    retryFullscreenOnUserGesture();
-
-    if (overlayMode !== "pause") {
-      return;
-    }
-
-    void pwa.openInstallFlow("pause").then(applyOverlayFlowResult);
-  });
-
-  overlayFooterButton.addEventListener("click", () => {
-    retryFullscreenOnUserGesture();
-
-    if (overlayMode !== "gameOver") {
-      return;
-    }
-
-    void pwa.openInstallFlow("postGameOver").then(applyOverlayFlowResult);
-  });
+  ui.subscribe(handleUiEvent);
 
   let lastPointerDownTime = 0;
   let lastPointerDownX = 0;
@@ -3083,9 +2647,9 @@ function togglePauseGame(): void {
   });
 
   installBrowserInteractionGuards();
-  installDoubleTapZoomGuard(modal);
+  installDoubleTapZoomGuard(ui.modal);
   subscribeToPwaStateChanges(() => {
-    updateHud();
+    renderApp();
 
     if (overlayMode === "pause") {
       showPauseOverlay(false);
