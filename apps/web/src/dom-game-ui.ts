@@ -396,3 +396,5 @@ export function createDomGameUi() {
     },
   };
 }
+
+export type DomGameUi = ReturnType<typeof createDomGameUi>;

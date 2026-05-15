@@ -1,10 +1,29 @@
 import { createAdminPage } from "./admin/admin-page.ts";
 import { installAnalyticsLifecycleFlush } from "./analytics-client.ts";
+import { createDomGameUi } from "./dom-game-ui.ts";
 import { enterGamePage, enterNonGamePage, enterSettingsPage, initializeGame, persistActiveProfileSettings, resetSettingsDraftToDefaults, setOpenSettingsListener, subscribeToSettingsState, updateSettingsDraft } from "./game.ts";
 import { initializeIcons } from "./icons.ts";
 import { registerPwaServiceWorker } from "./pwa.ts";
 import { getCurrentRoute, initializeRouter, navigateToRoute, subscribeToRouteChanges, type AppRoute } from "./router.ts";
 import { createSettingsPage } from "./settings-page.ts";
+
+function getGameCanvas(): HTMLCanvasElement {
+  const canvas = document.getElementById("game");
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    throw new Error("Canvas element not found");
+  }
+
+  return canvas;
+}
+
+function getGameCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("2D context is not available");
+  }
+
+  return context;
+}
 
 const settingsPage = createSettingsPage({
   onValueChange(field, value) {
@@ -19,6 +38,9 @@ const settingsPage = createSettingsPage({
   },
 });
 const adminPage = createAdminPage();
+const gameCanvas = getGameCanvas();
+const gameContext = getGameCanvasContext(gameCanvas);
+const gameUi = createDomGameUi();
 
 document.body.append(settingsPage.element, adminPage.element);
 initializeIcons();
@@ -51,7 +73,12 @@ function handleRouteChange(route: AppRoute): void {
   }
 }
 
-initializeGame();
+initializeGame({
+  canvas: gameCanvas,
+  context: gameContext,
+  ui: gameUi,
+  rootStyle: document.documentElement.style,
+});
 initializeRouter();
 subscribeToRouteChanges(handleRouteChange);
 handleRouteChange(getCurrentRoute());

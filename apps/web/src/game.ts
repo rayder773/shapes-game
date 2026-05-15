@@ -40,7 +40,7 @@ import {
   getLifeCrossSegments,
   getLifeDiamondPoints,
 } from "./icons.ts";
-import { createDomGameUi, type DomGameUiEvent } from "./dom-game-ui.ts";
+import type { DomGameUi, DomGameUiEvent } from "./dom-game-ui.ts";
 import {
   flushAnalyticsEvents,
   getAnalyticsSessionId,
@@ -326,6 +326,13 @@ export type SettingsViewState = {
 type SettingsStateListener = (state: SettingsViewState) => void;
 type OpenSettingsListener = () => void;
 
+export type GameDomDependencies = {
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  ui: DomGameUi;
+  rootStyle: CSSStyleDeclaration;
+};
+
 const SCALE = 30;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
@@ -363,18 +370,10 @@ const GAME_RULES = [
   "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
   "Если совпадает хотя бы одно свойство, теряется жизнь. Забег заканчивается, когда жизни кончаются.",
 ];
-const canvasElement = document.getElementById("game");
-if (!(canvasElement instanceof HTMLCanvasElement)) {
-  throw new Error("Canvas element not found");
-}
-const canvas = canvasElement;
-const context2d = canvas.getContext("2d");
-if (!context2d) {
-  throw new Error("2D context is not available");
-}
-const ctx = context2d;
-const ui = createDomGameUi();
-const rootStyle = document.documentElement.style;
+let canvas: HTMLCanvasElement;
+let ctx: CanvasRenderingContext2D;
+let ui: DomGameUi;
+let rootStyle: CSSStyleDeclaration;
 const settingsStateListeners = new Set<SettingsStateListener>();
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
@@ -383,6 +382,7 @@ let overlayMode: OverlayMode = null;
 let shouldRetryFullscreen = true;
 let hasStartedFrameLoop = false;
 let hasInitializedGameSession = false;
+let hasInstalledDomBindings = false;
 let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
 let lastPauseWasAutoPaused = false;
@@ -2505,169 +2505,179 @@ function togglePauseGame(): void {
     if (key === "arrowright" || key === "d") setDirectionalInput("right", isPressed);
   }
 
-  window.addEventListener("keydown", (event) => {
-    if (!isGameRouteActive) return;
+  function installDomBindings(): void {
+    if (hasInstalledDomBindings) return;
+    hasInstalledDomBindings = true;
 
-    const key = event.key.toLowerCase();
-    if (key === PAUSE_KEY) {
-      event.preventDefault();
-      togglePauseGame();
-      return;
-    }
+    window.addEventListener("keydown", (event) => {
+      if (!isGameRouteActive) return;
 
-    if (!DIRECTIONAL_KEYS.has(key) || game.state !== "playing") return;
-    event.preventDefault();
-    setInputKey(key, true);
-    refreshPlayerDirectionFromKeyboard();
-  });
-
-  window.addEventListener("keyup", (event) => {
-    if (!isGameRouteActive) return;
-
-    const key = event.key.toLowerCase();
-    if (!DIRECTIONAL_KEYS.has(key)) return;
-    event.preventDefault();
-    setInputKey(key, false);
-    refreshPlayerDirectionFromKeyboard();
-  });
-
-  window.addEventListener("blur", () => {
-    clearInputState();
-    clearActiveTouchInputs();
-    pauseGame(true);
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      clearInputState();
-      clearActiveTouchInputs();
-      pauseGame(true);
-    }
-  });
-
-  window.addEventListener("resize", () => {
-    resizeCanvas();
-  });
-  window.addEventListener("orientationchange", () => {
-    resizeCanvas();
-  });
-  window.visualViewport?.addEventListener("resize", () => {
-    resizeCanvas();
-  });
-  window.visualViewport?.addEventListener("scroll", () => {
-    resizeCanvas();
-  });
-  document.addEventListener("fullscreenchange", () => {
-    resizeCanvas();
-  });
-  document.addEventListener("webkitfullscreenchange", () => {
-    resizeCanvas();
-  });
-
-  function handleUiEvent(event: DomGameUiEvent): void {
-    retryFullscreenOnUserGesture();
-
-    if (event.type === "pause-toggle") {
-      togglePauseGame();
-      return;
-    }
-
-    if (event.type === "open-install-flow") {
-      void pwa.openInstallFlow(event.surface).then(applyOverlayFlowResult);
-      return;
-    }
-
-    if (event.action === "confirmInstall") {
-      if (overlayMode === "gameOver") {
-        void pwa.openInstallFlow("postGameOver").then(applyOverlayFlowResult);
+      const key = event.key.toLowerCase();
+      if (key === PAUSE_KEY) {
+        event.preventDefault();
+        togglePauseGame();
         return;
       }
 
-      void pwa.confirmOverlay().then(applyOverlayFlowResult);
-      return;
-    }
+      if (!DIRECTIONAL_KEYS.has(key) || game.state !== "playing") return;
+      event.preventDefault();
+      setInputKey(key, true);
+      refreshPlayerDirectionFromKeyboard();
+    });
 
-    if (event.action === "dismissInstall") {
-      applyOverlayFlowResult(pwa.dismissOverlay());
-      return;
-    }
+    window.addEventListener("keyup", (event) => {
+      if (!isGameRouteActive) return;
 
-    if (event.action === "acceptOnboarding") {
-      setRulesAccepted();
-      resumeGame();
-      return;
-    }
+      const key = event.key.toLowerCase();
+      if (!DIRECTIONAL_KEYS.has(key)) return;
+      event.preventDefault();
+      setInputKey(key, false);
+      refreshPlayerDirectionFromKeyboard();
+    });
 
-    if (event.action === "resume") {
-      resumeGame();
-      return;
-    }
+    window.addEventListener("blur", () => {
+      clearInputState();
+      clearActiveTouchInputs();
+      pauseGame(true);
+    });
 
-    if (event.action === "openSettings") {
-      openSettingsListener?.();
-      return;
-    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        clearInputState();
+        clearActiveTouchInputs();
+        pauseGame(true);
+      }
+    });
 
-    if (event.action === "restart") {
-      restartGame();
-    }
-  }
+    window.addEventListener("resize", () => {
+      resizeCanvas();
+    });
+    window.addEventListener("orientationchange", () => {
+      resizeCanvas();
+    });
+    window.visualViewport?.addEventListener("resize", () => {
+      resizeCanvas();
+    });
+    window.visualViewport?.addEventListener("scroll", () => {
+      resizeCanvas();
+    });
+    document.addEventListener("fullscreenchange", () => {
+      resizeCanvas();
+    });
+    document.addEventListener("webkitfullscreenchange", () => {
+      resizeCanvas();
+    });
 
-  ui.subscribe(handleUiEvent);
+    function handleUiEvent(event: DomGameUiEvent): void {
+      retryFullscreenOnUserGesture();
 
-  let lastPointerDownTime = 0;
-  let lastPointerDownX = 0;
-  let lastPointerDownY = 0;
+      if (event.type === "pause-toggle") {
+        togglePauseGame();
+        return;
+      }
 
-  canvas.addEventListener("pointerdown", (event) => {
-    retryFullscreenOnUserGesture();
-    if (!isGameRouteActive) return;
-    if (game.state !== "playing") return;
+      if (event.type === "open-install-flow") {
+        void pwa.openInstallFlow(event.surface).then(applyOverlayFlowResult);
+        return;
+      }
 
-    if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (event.action === "confirmInstall") {
+        if (overlayMode === "gameOver") {
+          void pwa.openInstallFlow("postGameOver").then(applyOverlayFlowResult);
+          return;
+        }
 
-    event.preventDefault();
+        void pwa.confirmOverlay().then(applyOverlayFlowResult);
+        return;
+      }
 
-    const now = event.timeStamp || performance.now();
-    const elapsed = now - lastPointerDownTime;
-    const isDoubleTap =
-      elapsed > 0 &&
-      elapsed < DOUBLE_TAP_WINDOW_MS &&
-      Math.abs(event.clientX - lastPointerDownX) < DOUBLE_TAP_RADIUS_PX &&
-      Math.abs(event.clientY - lastPointerDownY) < DOUBLE_TAP_RADIUS_PX;
-    lastPointerDownTime = now;
-    lastPointerDownX = event.clientX;
-    lastPointerDownY = event.clientY;
+      if (event.action === "dismissInstall") {
+        applyOverlayFlowResult(pwa.dismissOverlay());
+        return;
+      }
 
-    if (isDoubleTap) {
-      game.playerBoostExpiresAt = performance.now() + PLAYER_BOOST_DURATION_MS;
-    }
+      if (event.action === "acceptOnboarding") {
+        setRulesAccepted();
+        resumeGame();
+        return;
+      }
 
-    setPointerDirection(event.clientX, event.clientY);
-  });
+      if (event.action === "resume") {
+        resumeGame();
+        return;
+      }
 
-  installBrowserInteractionGuards();
-  installDoubleTapZoomGuard(ui.modal);
-  subscribeToPwaStateChanges(() => {
-    renderApp();
+      if (event.action === "openSettings") {
+        openSettingsListener?.();
+        return;
+      }
 
-    if (overlayMode === "pause") {
-      showPauseOverlay(false);
-      return;
-    }
-
-    if (overlayMode === "install") {
-      if (game.state === "gameOver") {
-        showGameOverOverlay();
-      } else if (game.state === "paused") {
-        showPauseOverlay(false);
-      } else {
-        hideOverlay();
+      if (event.action === "restart") {
+        restartGame();
       }
     }
-  });
 
-  export function initializeGame(): void {
+    ui.subscribe(handleUiEvent);
+
+    let lastPointerDownTime = 0;
+    let lastPointerDownX = 0;
+    let lastPointerDownY = 0;
+
+    canvas.addEventListener("pointerdown", (event) => {
+      retryFullscreenOnUserGesture();
+      if (!isGameRouteActive) return;
+      if (game.state !== "playing") return;
+
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+
+      event.preventDefault();
+
+      const now = event.timeStamp || performance.now();
+      const elapsed = now - lastPointerDownTime;
+      const isDoubleTap =
+        elapsed > 0 &&
+        elapsed < DOUBLE_TAP_WINDOW_MS &&
+        Math.abs(event.clientX - lastPointerDownX) < DOUBLE_TAP_RADIUS_PX &&
+        Math.abs(event.clientY - lastPointerDownY) < DOUBLE_TAP_RADIUS_PX;
+      lastPointerDownTime = now;
+      lastPointerDownX = event.clientX;
+      lastPointerDownY = event.clientY;
+
+      if (isDoubleTap) {
+        game.playerBoostExpiresAt = performance.now() + PLAYER_BOOST_DURATION_MS;
+      }
+
+      setPointerDirection(event.clientX, event.clientY);
+    });
+
+    installBrowserInteractionGuards();
+    installDoubleTapZoomGuard(ui.modal);
+    subscribeToPwaStateChanges(() => {
+      renderApp();
+
+      if (overlayMode === "pause") {
+        showPauseOverlay(false);
+        return;
+      }
+
+      if (overlayMode === "install") {
+        if (game.state === "gameOver") {
+          showGameOverOverlay();
+        } else if (game.state === "paused") {
+          showPauseOverlay(false);
+        } else {
+          hideOverlay();
+        }
+      }
+    });
+  }
+
+  export function initializeGame(dependencies: GameDomDependencies): void {
+    canvas = dependencies.canvas;
+    ctx = dependencies.context;
+    ui = dependencies.ui;
+    rootStyle = dependencies.rootStyle;
+    installDomBindings();
     resizeCanvas();
     initializeSettingsState(loadSavedGameplaySettings());
     updateGameplayProfile(true);

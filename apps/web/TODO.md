@@ -183,7 +183,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 - `npm run test --workspace web` проходит.
 - `npm run lint --workspace web` проходит.
 - `npm run build --workspace web` проходит.
-- На момент последней проверки: 11 test files passed, 37 tests passed.
+- На момент последней проверки: 12 test files passed, 41 tests passed.
 
 ### App-Level Model
 
@@ -221,30 +221,53 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-## Следующие Шаги
-
 ### 1. Закрепить Контракт UI Adapter
 
-Сделать следующий небольшой шаг без переписывания gameplay:
-
-- добавить отдельный `test/dom-game-ui.spec.ts`;
-- напрямую создавать DOM adapter на markup из `index.html`;
-- передавать fake `AppReadModel` в `ui.render(model)`;
-- проверять:
+- Добавлен отдельный `test/dom-game-ui.spec.ts`.
+- Тест напрямую создает DOM adapter на markup из `index.html`.
+- Тест передает fake `AppReadModel` в `ui.render(model)` без запуска `main.ts` и gameplay runtime.
+- Зафиксированы проверки:
   - HUD rendering;
   - overlay rendering для onboarding/pause/gameOver;
   - route visibility через `app-hidden`;
   - emitted events для pause button и overlay buttons;
   - results view без зависимости от runtime physics.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
 
-Цель теста: зафиксировать adapter contract отдельно от `game.ts`, чтобы следующий разрез можно было делать увереннее.
+### 1. Доделать UI Adapter Boundary
 
-### 2. Доделать UI Adapter Boundary
+- `game.ts` больше не создает `createDomGameUi()` напрямую.
+- `game.ts` больше не делает direct `document.getElementById("game")` и `canvas.getContext("2d")` на import.
+- Добавлен тип `GameDomDependencies`.
+- `initializeGame(dependencies)` получает:
+  - `canvas`;
+  - `context`;
+  - `ui`;
+  - `rootStyle`.
+- `main.ts` стал bootstrap layer для DOM-зависимостей игры:
+  - валидирует canvas;
+  - создает 2D context;
+  - создает DOM game UI adapter;
+  - передает зависимости в `initializeGame(...)`.
+- Runtime listener bindings для UI/canvas/window/document перенесены в initialization path, а не выполняются при import `game.ts`.
+- Keyboard/pointer/resize/fullscreen guards пока оставлены в runtime, как и планировалось.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
 
-После отдельного adapter test постепенно убрать оставшуюся UI-сцепку из `game.ts`:
+## Следующие Шаги
 
-- заменить direct canvas lookup в `game.ts` на canvas dependency из adapter или bootstrap layer;
-- разделить `createDomGameUi()` и canvas renderer boundary;
+### 1. Разделить Canvas Renderer Boundary
+
+После DOM bootstrap boundary нужно отделить canvas drawing от gameplay runtime:
+
+- вынести `RenderSystem`, `drawEntity`, `traceShape`, `drawLifePickup`, `drawCoinPickup` в отдельный canvas renderer module;
+- сначала можно оставить renderer на runtime entities, но принимать canvas/context/metrics через явные зависимости;
+- следующим инкрементом перевести canvas renderer на `GameReadModel.scene.entities`;
 - оставить keyboard/pointer/resize/fullscreen guards в runtime до отдельного input/canvas инкремента;
 - не переносить settings/admin страницы в этот шаг.
 
@@ -258,7 +281,7 @@ app.subscribe((model) => ui.render(model));
 ui.subscribe((event) => app.dispatch(event));
 ```
 
-### 3. Разделить Game Runtime
+### 2. Разделить Game Runtime
 
 После UI adapter можно безопасно дробить `game.ts`:
 
@@ -270,7 +293,7 @@ ui.subscribe((event) => app.dispatch(event));
 - analytics integration;
 - app lifecycle.
 
-### 4. Только Потом DSL / Signals / Custom ECS
+### 3. Только Потом DSL / Signals / Custom ECS
 
 Когда модель и тесты стабилизированы:
 
