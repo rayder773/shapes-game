@@ -259,31 +259,44 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-## Следующие Шаги
-
 ### 1. Разделить Canvas Renderer Boundary
 
-После DOM bootstrap boundary нужно отделить canvas drawing от gameplay runtime:
+- Добавлен `src/canvas-renderer.ts` с внутренним API:
+  - `createCanvasRenderer({ context, scale })`;
+  - `CanvasRenderableEntity`;
+  - `CanvasRendererMetrics`.
+- Canvas renderer теперь отвечает за `clearRect` и drawing:
+  - shape tracing;
+  - player marker;
+  - life/coin pickup drawing;
+  - colors, line dash и invulnerability visual.
+- `game.ts` оставляет у себя resize, viewport metrics, physics bounds, input и fullscreen guards.
+- `game.ts` мапит `game.queries.renderables` в узкий renderer DTO:
+  - `id`;
+  - `kind`;
+  - `position`;
+  - `rotation`;
+  - `appearance`.
+- Transient visuals передаются через явные dependencies/callbacks:
+  - `now()`;
+  - `isDamageInvulnerable(entity)`.
+- `GameReadModel.scene` и публичный read-model contract не менялись; переход renderer-а на read model остается отдельным инкрементом.
+- Добавлен `test/canvas-renderer.spec.ts`:
+  - renderer очищает canvas через `clearRect`;
+  - рисует player, target, lifePickup и coinPickup;
+  - применяет `translate`, `rotate`, `setLineDash`;
+  - invulnerability callback добавляет ожидаемые extra player visual calls.
+- `test/canvas-smoke.spec.ts` оставлен как app-level smoke.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
 
-- вынести `RenderSystem`, `drawEntity`, `traceShape`, `drawLifePickup`, `drawCoinPickup` в отдельный canvas renderer module;
-- сначала можно оставить renderer на runtime entities, но принимать canvas/context/metrics через явные зависимости;
-- следующим инкрементом перевести canvas renderer на `GameReadModel.scene.entities`;
-- оставить keyboard/pointer/resize/fullscreen guards в runtime до отдельного input/canvas инкремента;
-- не переносить settings/admin страницы в этот шаг.
+## Следующие Шаги
 
-Целевой формат:
+### 1. Разделить Game Runtime
 
-```ts
-const app = createAppRuntime(dependencies);
-const ui = createDomUi(root);
-
-app.subscribe((model) => ui.render(model));
-ui.subscribe((event) => app.dispatch(event));
-```
-
-### 2. Разделить Game Runtime
-
-После UI adapter можно безопасно дробить `game.ts`:
+После UI/canvas adapter boundary можно безопасно дробить `game.ts`:
 
 - types/components;
 - resources;
@@ -292,6 +305,20 @@ ui.subscribe((event) => app.dispatch(event));
 - read model builder;
 - analytics integration;
 - app lifecycle.
+
+### 2. Перевести Canvas Renderer На Read Model
+
+Отдельным инкрементом можно перевести canvas renderer с DTO, собранного из runtime/ECS entity, на `GameReadModel.scene.entities`.
+
+Целевой формат остается:
+
+```ts
+const app = createAppRuntime(dependencies);
+const ui = createDomUi(root);
+
+app.subscribe((model) => ui.render(model));
+ui.subscribe((event) => app.dispatch(event));
+```
 
 ### 3. Только Потом DSL / Signals / Custom ECS
 

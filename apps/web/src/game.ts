@@ -34,12 +34,10 @@ import {
   type PwaInstallOverlayModel,
 } from "./pwa.ts";
 import {
-  getCoinHexagonPoints,
-  getCoinInnerRadius,
-  getCoinSpokes,
-  getLifeCrossSegments,
-  getLifeDiamondPoints,
-} from "./icons.ts";
+  createCanvasRenderer,
+  type CanvasRenderableEntity,
+  type CanvasRenderer,
+} from "./canvas-renderer.ts";
 import type { DomGameUi, DomGameUiEvent } from "./dom-game-ui.ts";
 import {
   flushAnalyticsEvents,
@@ -353,13 +351,6 @@ const MIN_DIRECTION_LENGTH = 0.0001;
 const SHAPES: Shape[] = ["circle", "square", "triangle"];
 const COLORS: ColorName[] = ["red", "blue", "green"];
 const FILL_STYLES: FillStyleName[] = ["filled", "outline", "dashed"];
-const COLOR_MAP: Record<ColorName, string> = {
-  red: "#ff5f5f",
-  blue: "#66a8ff",
-  green: "#59e093",
-};
-const LIFE_COLOR = "#b894ff";
-const COIN_COLOR = "#ffd166";
 const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
 const PAUSE_KEY = "escape";
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
@@ -372,6 +363,7 @@ const GAME_RULES = [
 ];
 let canvas: HTMLCanvasElement;
 let ctx: CanvasRenderingContext2D;
+let canvasRenderer: CanvasRenderer;
 let ui: DomGameUi;
 let rootStyle: CSSStyleDeclaration;
 const settingsStateListeners = new Set<SettingsStateListener>();
@@ -2160,148 +2152,38 @@ function togglePauseGame(): void {
     }
   }
 
-  function traceShape(shape: Shape, size: number): void {
-    ctx.beginPath();
+  function getCanvasRenderableKind(entity: RenderableEntity): CanvasRenderableEntity["kind"] {
+    if (entity.player) return "player";
+    if (entity.target) return "target";
+    if (entity.lifePickup) return "lifePickup";
+    if (entity.coinPickup) return "coinPickup";
 
-    if (shape === "circle") {
-      ctx.arc(0, 0, size * SCALE, 0, Math.PI * 2);
-      return;
-    }
-
-    if (shape === "square") {
-      const pixelSize = size * SCALE;
-      ctx.rect(-pixelSize, -pixelSize, pixelSize * 2, pixelSize * 2);
-      return;
-    }
-
-    const vertices = getTriangleVertices(size);
-    ctx.moveTo(vertices[0]!.x * SCALE, -vertices[0]!.y * SCALE);
-    for (let index = 1; index < vertices.length; index += 1) {
-      const vertex = vertices[index]!;
-      ctx.lineTo(vertex.x * SCALE, -vertex.y * SCALE);
-    }
-    ctx.closePath();
+    throw new Error(`Unsupported canvas renderable entity ${entity.id}`);
   }
 
-  function drawPlayerMarker(): void {
-    ctx.save();
-    ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+  function createCanvasRenderableEntity(entity: RenderableEntity): CanvasRenderableEntity {
+    return {
+      id: entity.id,
+      kind: getCanvasRenderableKind(entity),
+      position: {
+        x: entity.transform.x,
+        y: entity.transform.y,
+      },
+      rotation: entity.transform.angle,
+      appearance: entity.appearance,
+    };
   }
 
-  function drawLifePickup(size: number): void {
-    const unitScale = (size * SCALE * 0.96) / 10;
-    const diamondPoints = getLifeDiamondPoints(unitScale);
-    const crossSegments = getLifeCrossSegments(unitScale);
-
-    ctx.beginPath();
-    ctx.moveTo(diamondPoints[0]!.x, diamondPoints[0]!.y);
-    for (let index = 1; index < diamondPoints.length; index += 1) {
-      const point = diamondPoints[index]!;
-      ctx.lineTo(point.x, point.y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-
-    for (const segment of crossSegments) {
-      ctx.beginPath();
-      ctx.moveTo(segment.from.x, segment.from.y);
-      ctx.lineTo(segment.to.x, segment.to.y);
-      ctx.stroke();
-    }
-  }
-
-  function drawCoinPickup(size: number): void {
-    const unitScale = (size * SCALE * 1.05) / 10;
-    const hexagonPoints = getCoinHexagonPoints(unitScale);
-    const spokes = getCoinSpokes(unitScale);
-
-    ctx.beginPath();
-    for (let index = 0; index < hexagonPoints.length; index += 1) {
-      const point = hexagonPoints[index]!;
-      if (index === 0) {
-        ctx.moveTo(point.x, point.y);
-      } else {
-        ctx.lineTo(point.x, point.y);
-      }
-    }
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(0, 0, getCoinInnerRadius(unitScale), 0, Math.PI * 2);
-    ctx.stroke();
-
-    for (const spoke of spokes) {
-      ctx.beginPath();
-      ctx.moveTo(spoke.from.x, spoke.from.y);
-      ctx.lineTo(spoke.to.x, spoke.to.y);
-      ctx.stroke();
-    }
-  }
-
-  function drawEntity(entity: RenderableEntity): void {
-    const { x, y } = worldToCanvas(entity.transform.x, entity.transform.y);
-    const color = entity.lifePickup ? LIFE_COLOR : entity.coinPickup ? COIN_COLOR : COLOR_MAP[entity.appearance.color];
-    const isInvulnerablePlayer = entity.player && isDamageInvulnerabilityActive();
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(-entity.transform.angle);
-    ctx.lineWidth = entity.player ? 4.5 : entity.lifePickup ? 2.8 : entity.coinPickup ? 2.4 : 2.2;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.setLineDash(entity.lifePickup || entity.coinPickup ? [] : entity.appearance.fillStyle === "dashed" ? [9, 6] : []);
-
-    if (entity.lifePickup) {
-      ctx.shadowColor = "rgba(184, 148, 255, 0.4)";
-      ctx.shadowBlur = 14;
-      drawLifePickup(entity.appearance.size);
-    } else if (entity.coinPickup) {
-      ctx.shadowColor = "rgba(255, 209, 102, 0.46)";
-      ctx.shadowBlur = 18;
-      drawCoinPickup(entity.appearance.size);
-    } else {
-      traceShape(entity.appearance.shape, entity.appearance.size);
-
-      if (entity.appearance.fillStyle === "filled") {
-        ctx.globalAlpha = 0.9;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.stroke();
-      } else {
-        ctx.stroke();
-      }
-    }
-
-    ctx.setLineDash([]);
-
-    if (entity.player) {
-      if (isInvulnerablePlayer && Math.floor(performance.now() / 90) % 2 === 0) {
-        traceShape(entity.appearance.shape, entity.appearance.size * 1.18);
-        ctx.strokeStyle = "#ffd166";
-        ctx.lineWidth = 2.2;
-        ctx.stroke();
-      }
-      drawPlayerMarker();
-    }
-
-    ctx.restore();
-  }
-
-  function RenderSystem(): void {
+  function renderSystem(): void {
     const metrics = getCanvasMetrics();
-    ctx.clearRect(0, 0, metrics.widthCss, metrics.heightCss);
+    const entities = [...game.queries.renderables].map(createCanvasRenderableEntity);
 
-    for (const entity of game.queries.renderables) {
-      drawEntity(entity);
-    }
+    canvasRenderer.render({
+      metrics,
+      entities,
+      now: () => performance.now(),
+      isDamageInvulnerable: (entity) => entity.kind === "player" && isDamageInvulnerabilityActive(),
+    });
   }
 
   function resizeCanvas(): void {
@@ -2458,7 +2340,7 @@ function togglePauseGame(): void {
       game.accumulator = 0;
     }
 
-    RenderSystem();
+    renderSystem();
     requestAnimationFrame(frame);
   }
 
@@ -2675,6 +2557,7 @@ function togglePauseGame(): void {
   export function initializeGame(dependencies: GameDomDependencies): void {
     canvas = dependencies.canvas;
     ctx = dependencies.context;
+    canvasRenderer = createCanvasRenderer({ context: ctx, scale: SCALE });
     ui = dependencies.ui;
     rootStyle = dependencies.rootStyle;
     installDomBindings();
