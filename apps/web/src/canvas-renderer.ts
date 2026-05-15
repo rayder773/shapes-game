@@ -5,37 +5,23 @@ import {
   getLifeCrossSegments,
   getLifeDiamondPoints,
 } from "./icons.ts";
+import type { GameReadModelEntity } from "./game-read-model.ts";
 
 type Shape = "circle" | "square" | "triangle";
 type ColorName = "red" | "blue" | "green";
-type FillStyleName = "filled" | "outline" | "dashed";
 
 export type CanvasRendererMetrics = {
   widthCss: number;
   heightCss: number;
 };
 
-export type CanvasRenderableEntity = {
-  id: number;
-  kind: "player" | "target" | "lifePickup" | "coinPickup";
-  position: {
-    x: number;
-    y: number;
-  };
-  rotation: number;
-  appearance: {
-    shape: Shape;
-    color: ColorName;
-    fillStyle: FillStyleName;
-    size: number;
-  };
-};
+export type CanvasRenderableEntity = GameReadModelEntity;
 
 export type CanvasRendererFrame = {
   metrics: CanvasRendererMetrics;
-  entities: Iterable<CanvasRenderableEntity>;
+  entities: Iterable<GameReadModelEntity>;
   now: () => number;
-  isDamageInvulnerable: (entity: CanvasRenderableEntity) => boolean;
+  isDamageInvulnerable: (entity: GameReadModelEntity) => boolean;
 };
 
 export type CanvasRenderer = {
@@ -159,9 +145,9 @@ export function createCanvasRenderer({ context, scale }: CanvasRendererDependenc
 
   function drawEntity(
     metrics: CanvasRendererMetrics,
-    entity: CanvasRenderableEntity,
+    entity: GameReadModelEntity,
     now: () => number,
-    isDamageInvulnerable: (entity: CanvasRenderableEntity) => boolean,
+    isDamageInvulnerable: (entity: GameReadModelEntity) => boolean,
   ): void {
     const { x, y } = worldToCanvas(metrics, entity.position.x, entity.position.y);
     const color =

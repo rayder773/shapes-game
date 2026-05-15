@@ -292,6 +292,20 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### 1. Перевести Canvas Renderer На Read Model
+
+- `src/canvas-renderer.ts` теперь принимает `GameReadModelEntity` из `GameReadModel.scene.entities`.
+- `CanvasRenderableEntity` сохранен как compatibility alias для текущих тестов и внешних imports.
+- `game.ts` больше не собирает canvas-specific DTO из ECS/runtime entity перед рендером.
+- `renderSystem()` передает в renderer `getGameReadModel().scene.entities`.
+- Runtime-only invulnerability visual остался callback-зависимостью renderer-а и не добавлен в публичную read model.
+- `test/canvas-renderer.spec.ts` использует read-model-compatible entity shape.
+- App-level canvas smoke coverage сохранен.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
 ### 1. Разделить Game Runtime
@@ -306,10 +320,6 @@ DSL должен быть render adapter-ом, а не фундаментом п
 - analytics integration;
 - app lifecycle.
 
-### 2. Перевести Canvas Renderer На Read Model
-
-Отдельным инкрементом можно перевести canvas renderer с DTO, собранного из runtime/ECS entity, на `GameReadModel.scene.entities`.
-
 Целевой формат остается:
 
 ```ts
@@ -320,7 +330,7 @@ app.subscribe((model) => ui.render(model));
 ui.subscribe((event) => app.dispatch(event));
 ```
 
-### 3. Только Потом DSL / Signals / Custom ECS
+### 2. Только Потом DSL / Signals / Custom ECS
 
 Когда модель и тесты стабилизированы:
 

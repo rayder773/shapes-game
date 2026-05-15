@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   advanceFrames,
+  advanceUntil,
   bootApp,
   click,
   gameModel,
@@ -215,6 +216,63 @@ describe("gameplay core", () => {
     expect(sceneEntities().filter((entity) => entity.kind === "coinPickup")).toHaveLength(0);
   });
 
+  test("safe target collision consumes without rebounding the player", async () => {
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+      compactTouch: {},
+      desktop: {
+        targetSpeed: 0,
+        playerSpeed: 12,
+        playerBoostSpeed: 18,
+        maxTargets: 1,
+        lifeSpawnChancePercent: 0,
+      },
+    }));
+    setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
+    await bootApp("/shapes-game/");
+
+    const safeTargetId = await restartUntilClearTarget((player, target) => (
+      target.shape !== player.shape
+      && target.color !== player.color
+      && target.fillStyle !== player.fillStyle
+    ));
+    const safeTarget = targetModels().find((target) => target.id === safeTargetId);
+    expect(safeTarget).toBeDefined();
+
+    const playerBeforeCollision = playerModel();
+    const deltaX = safeTarget!.position.x - playerBeforeCollision.position.x;
+    const deltaY = safeTarget!.position.y - playerBeforeCollision.position.y;
+    const distance = Math.hypot(deltaX, deltaY);
+    expect(distance).toBeGreaterThan(0);
+
+    const expectedDirection = {
+      x: deltaX / distance,
+      y: deltaY / distance,
+    };
+    pointerDownCanvasWorld(
+      playerBeforeCollision.position.x + expectedDirection.x * (distance + 2),
+      playerBeforeCollision.position.y + expectedDirection.y * (distance + 2),
+    );
+    await advanceFrames(1);
+
+    const directionBeforeCollision = playerModel().movementDirection;
+    expect(directionBeforeCollision).toBeDefined();
+    expect(
+      directionBeforeCollision!.x * expectedDirection.x
+      + directionBeforeCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+
+    await advanceUntil(() => gameModel().hud.score === 1, { maxFrames: 240 });
+
+    const directionAfterCollision = playerModel().movementDirection;
+    expect(directionAfterCollision).toBeDefined();
+    expect(
+      directionAfterCollision!.x * expectedDirection.x
+      + directionAfterCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+    expect(targetModels().find((target) => target.id === safeTargetId)).toBeUndefined();
+  });
+
   test("unsafe target collision decreases lives", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
     window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
@@ -249,6 +307,63 @@ describe("gameplay core", () => {
 
     await advanceFrames(8);
     expect(gameModel().hud.lives).toBe(livesBeforeHit - 1);
+  });
+
+  test("unsafe target collision removes the target without rebounding the player", async () => {
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+      compactTouch: {},
+      desktop: {
+        targetSpeed: 0,
+        playerSpeed: 12,
+        playerBoostSpeed: 18,
+        maxTargets: 1,
+      },
+    }));
+    setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
+    await bootApp("/shapes-game/");
+
+    const unsafeTargetId = await restartUntilClearTarget((player, target) => (
+      target.shape === player.shape
+      || target.color === player.color
+      || target.fillStyle === player.fillStyle
+    ));
+    const unsafeTarget = targetModels().find((target) => target.id === unsafeTargetId);
+    expect(unsafeTarget).toBeDefined();
+
+    const playerBeforeCollision = playerModel();
+    const deltaX = unsafeTarget!.position.x - playerBeforeCollision.position.x;
+    const deltaY = unsafeTarget!.position.y - playerBeforeCollision.position.y;
+    const distance = Math.hypot(deltaX, deltaY);
+    expect(distance).toBeGreaterThan(0);
+
+    const expectedDirection = {
+      x: deltaX / distance,
+      y: deltaY / distance,
+    };
+    pointerDownCanvasWorld(
+      playerBeforeCollision.position.x + expectedDirection.x * (distance + 2),
+      playerBeforeCollision.position.y + expectedDirection.y * (distance + 2),
+    );
+    await advanceFrames(1);
+
+    const directionBeforeCollision = playerModel().movementDirection;
+    expect(directionBeforeCollision).toBeDefined();
+    expect(
+      directionBeforeCollision!.x * expectedDirection.x
+      + directionBeforeCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+
+    const livesBeforeHit = gameModel().hud.lives;
+    await advanceUntil(() => gameModel().hud.lives === livesBeforeHit - 1, { maxFrames: 240 });
+
+    const directionAfterCollision = playerModel().movementDirection;
+    expect(directionAfterCollision).toBeDefined();
+    expect(
+      directionAfterCollision!.x * expectedDirection.x
+      + directionAfterCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+    expect(targetModels().find((target) => target.id === unsafeTargetId)).toBeUndefined();
   });
 
   test("target growth respects fallback and maxTargets", async () => {

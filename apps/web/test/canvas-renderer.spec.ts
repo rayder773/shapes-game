@@ -1,8 +1,6 @@
 import { describe, expect, test } from "vitest";
-import {
-  createCanvasRenderer,
-  type CanvasRenderableEntity,
-} from "../src/canvas-renderer.ts";
+import { createCanvasRenderer } from "../src/canvas-renderer.ts";
+import type { GameReadModelEntity } from "../src/game-read-model.ts";
 
 type CanvasCall = {
   method: string;
@@ -80,11 +78,13 @@ function createContext() {
   return new CanvasContextMock();
 }
 
-const baseEntity: CanvasRenderableEntity = {
+const baseEntity: GameReadModelEntity = {
   id: 1,
   kind: "target",
   position: { x: 2, y: 3 },
   rotation: Math.PI / 4,
+  collisionRadius: 0.5,
+  movementDirection: { x: 1, y: 0 },
   appearance: {
     shape: "circle",
     color: "red",
@@ -93,7 +93,7 @@ const baseEntity: CanvasRenderableEntity = {
   },
 };
 
-function renderEntities(context: CanvasContextMock, entities: CanvasRenderableEntity[]) {
+function renderEntities(context: CanvasContextMock, entities: GameReadModelEntity[]) {
   const renderer = createCanvasRenderer({
     context: context as unknown as CanvasRenderingContext2D,
     scale: 30,
@@ -124,7 +124,7 @@ describe("canvas renderer", () => {
 
   test("draws player, target, life pickup and coin pickup shapes", () => {
     const context = createContext();
-    const entities: CanvasRenderableEntity[] = [
+    const entities: GameReadModelEntity[] = [
       {
         ...baseEntity,
         id: 1,
@@ -178,7 +178,7 @@ describe("canvas renderer", () => {
   test("draws the extra player visual while damage invulnerability is active", () => {
     const normalContext = createContext();
     const invulnerableContext = createContext();
-    const player: CanvasRenderableEntity = {
+    const player: GameReadModelEntity = {
       ...baseEntity,
       kind: "player",
       appearance: { ...baseEntity.appearance, shape: "circle", fillStyle: "outline" },

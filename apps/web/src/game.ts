@@ -35,7 +35,6 @@ import {
 } from "./pwa.ts";
 import {
   createCanvasRenderer,
-  type CanvasRenderableEntity,
   type CanvasRenderer,
 } from "./canvas-renderer.ts";
 import type { DomGameUi, DomGameUiEvent } from "./dom-game-ui.ts";
@@ -1488,21 +1487,29 @@ function togglePauseGame(): void {
         queuedContacts = [];
         bodies.clear();
 
+        const shouldPassThroughContact = (contact: Contact): boolean => {
+          if (!passThroughPredicate) return false;
+          const bodyIdA = (contact.getFixtureA().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
+          const bodyIdB = (contact.getFixtureB().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
+          if (bodyIdA === null || bodyIdB === null) return false;
+          return passThroughPredicate(bodyIdA, bodyIdB);
+        };
+
         nextWorld.on("begin-contact", (contact: Contact) => {
           const bodyIdA = (contact.getFixtureA().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
           const bodyIdB = (contact.getFixtureB().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
 
           if (bodyIdA === null || bodyIdB === null) return;
 
+          if (shouldPassThroughContact(contact)) {
+            contact.setEnabled(false);
+          }
+
           queuedContacts.push({ bodyIdA, bodyIdB });
         });
 
         nextWorld.on("pre-solve", (contact: Contact) => {
-          if (!passThroughPredicate) return;
-          const bodyIdA = (contact.getFixtureA().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
-          const bodyIdB = (contact.getFixtureB().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
-          if (bodyIdA === null || bodyIdB === null) return;
-          if (passThroughPredicate(bodyIdA, bodyIdB)) {
+          if (shouldPassThroughContact(contact)) {
             contact.setEnabled(false);
           }
         });
@@ -2152,31 +2159,9 @@ function togglePauseGame(): void {
     }
   }
 
-  function getCanvasRenderableKind(entity: RenderableEntity): CanvasRenderableEntity["kind"] {
-    if (entity.player) return "player";
-    if (entity.target) return "target";
-    if (entity.lifePickup) return "lifePickup";
-    if (entity.coinPickup) return "coinPickup";
-
-    throw new Error(`Unsupported canvas renderable entity ${entity.id}`);
-  }
-
-  function createCanvasRenderableEntity(entity: RenderableEntity): CanvasRenderableEntity {
-    return {
-      id: entity.id,
-      kind: getCanvasRenderableKind(entity),
-      position: {
-        x: entity.transform.x,
-        y: entity.transform.y,
-      },
-      rotation: entity.transform.angle,
-      appearance: entity.appearance,
-    };
-  }
-
   function renderSystem(): void {
     const metrics = getCanvasMetrics();
-    const entities = [...game.queries.renderables].map(createCanvasRenderableEntity);
+    const entities = getGameReadModel().scene.entities;
 
     canvasRenderer.render({
       metrics,
@@ -2244,11 +2229,7 @@ function togglePauseGame(): void {
       }
 
       if (otherEntity.lifePickup || otherEntity.coinPickup) return true;
-      const otherTarget = otherEntity.target ? otherEntity : null;
-      if (otherTarget) {
-        return areAllPropertiesDifferent(player.appearance!, otherTarget.appearance!);
-      }
-      return false;
+      return !!otherEntity.target;
     });
     clearGameplayEntities();
     updateGameplayProfile();
