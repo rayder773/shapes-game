@@ -487,6 +487,44 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### Planck Physics Adapter Boundary
+
+- Добавлен `src/game/planck-physics-adapter.ts` как Planck-specific implementation текущего `PhysicsAdapter` contract.
+- `src/game/game.ts` больше не импортирует Planck runtime symbols:
+  - `Box`;
+  - `Circle`;
+  - `Polygon`;
+  - `Vec2`;
+  - `World`;
+  - `Body`;
+  - `Contact`;
+  - `FixtureDef`.
+- `src/game/game.ts` создает physics через `createPlanckPhysicsAdapter()` и сохраняет gameplay ownership:
+  - spawning;
+  - collision resolution;
+  - boost/input effects;
+  - resize handling;
+  - read model;
+  - analytics/PWA integration.
+- Добавлен `src/game/game-geometry.ts` с pure helpers:
+  - `WALL_THICKNESS`;
+  - `clamp`;
+  - `normalizeVector`;
+  - `getTriangleVertices`;
+  - `getShapeRadius`.
+- `PlanckBodyUserData` удален из `src/game/game-runtime.ts`; Planck user-data type теперь внутренняя деталь adapter module.
+- Добавлен `test/planck-physics-adapter.spec.ts`, который фиксирует:
+  - ошибку при `createDynamicBody` до `createWorld`;
+  - lifecycle dynamic body create/read/destroy;
+  - `setVelocity`, `getVelocity`, `setSpeedAlongDirection`;
+  - `resizeBounds` с clamp dynamic bodies;
+  - collision event queue и drain semantics.
+- Проверки после инкремента:
+  - `./node_modules/.bin/tsc -p apps/web/tsconfig.json --noEmit` проходит;
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
 ### 1. Разделить Оставшийся Game Facade
@@ -495,8 +533,8 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 Ближайшие кандидаты:
 
-- `planck-physics-adapter.ts` — убрать Planck-specific imports/implementation из facade;
-- shared geometry/rules helpers — вынести pure logic вроде shape radius, spawn/rule helpers;
+- gameplay rules helpers — вынести pure logic вроде appearance matching и collision outcome decisions;
+- spawn helpers/systems — вынести spawn position/radius usage, spawn planning/apply;
 - gameplay systems — постепенно вынести physics step, collision collection, rule resolution, spawn planning/apply;
 - lifecycle/integration boundary — отделить PWA/analytics/fullscreen/app route orchestration от gameplay systems.
 
