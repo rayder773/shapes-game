@@ -1,19 +1,13 @@
 import {
-  Box,
-  Circle,
-  Polygon,
-  Vec2,
-  World as PhysicsWorld,
-  type Body,
-  type BodyDef,
-  type Contact,
-  type FixtureDef,
-  type Shape as PhysicsShape,
-  type Vec2Value,
-} from "planck";
-import {
   loadSavedGameplaySettings,
 } from "./gameplay-settings.ts";
+import {
+  getShapeRadius,
+  normalizeVector,
+  WALL_THICKNESS,
+  type Vector2,
+} from "./game-geometry.ts";
+import { createPlanckPhysicsAdapter } from "./planck-physics-adapter.ts";
 import {
   createPwaController,
   subscribeToPwaStateChanges,
@@ -70,7 +64,6 @@ import {
   type Bounds,
   type CanvasMetrics,
   type ColorName,
-  type ContactPassThroughPredicate,
   type EntityId,
   type FillStyleName,
   type GameEntity,
@@ -79,12 +72,9 @@ import {
   type InteractiveEntity,
   type MovementDirection,
   type OverlayMode,
-  type PhysicsAdapter,
   type PhysicsBodyId,
-  type PhysicsBodyKind,
   type PhysicsCommand,
   type PhysicsEntity,
-  type PlanckBodyUserData,
   type PlayerEntity,
   type SettingsEntity,
   type Shape,
@@ -120,9 +110,7 @@ const ENTITY_SIZE = 0.55;
 const LIFE_ENTITY_SIZE = 0.42;
 const COIN_ENTITY_SIZE = 0.4;
 const COIN_BONUS_MULTIPLIER = 2;
-const WALL_THICKNESS = 0.35;
 const MAX_SPAWN_ATTEMPTS = 80;
-const MIN_DIRECTION_LENGTH = 0.0001;
 const SHAPES: Shape[] = ["circle", "square", "triangle"];
 const COLORS: ColorName[] = ["red", "blue", "green"];
 const FILL_STYLES: FillStyleName[] = ["filled", "outline", "dashed"];
@@ -279,16 +267,6 @@ function syncViewportCssVars(widthCss: number, heightCss: number): void {
   rootStyle.setProperty("--app-height", `${heightCss}px`);
 }
 
-function normalizeVector(vector: Vec2Value): MovementDirection | null {
-  const length = Math.hypot(vector.x, vector.y);
-  if (length < MIN_DIRECTION_LENGTH) return null;
-
-  return {
-    x: vector.x / length,
-    y: vector.y / length,
-  };
-}
-
 function getRandomDirection(): MovementDirection {
   const angle = randomRange(0, Math.PI * 2);
   return {
@@ -319,7 +297,7 @@ function getEntitySpeed(entity: PhysicsEntity): number {
   return getGameplayProfile().targetSpeed;
 }
 
-function setEntityMovementDirection(entity: PhysicsEntity, direction: Vec2Value): void {
+function setEntityMovementDirection(entity: PhysicsEntity, direction: Vector2): void {
   const normalizedDirection = normalizeVector(direction);
   if (!normalizedDirection) return;
 
@@ -327,7 +305,7 @@ function setEntityMovementDirection(entity: PhysicsEntity, direction: Vec2Value)
 }
 
 // Direct velocity assignment provides instant steering by overwriting accumulated momentum.
-function setEntityVelocityAlongDirection(entity: PhysicsEntity, direction: Vec2Value): void {
+function setEntityVelocityAlongDirection(entity: PhysicsEntity, direction: Vector2): void {
   const normalizedDirection = normalizeVector(direction);
   if (!normalizedDirection) return;
 
@@ -434,10 +412,6 @@ function retryFullscreenOnUserGesture(): void {
     return min + Math.random() * (max - min);
   }
 
-  function clamp(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, value));
-  }
-
   function getCanvasMetrics(): CanvasMetrics {
     return game.canvasMetrics;
   }
@@ -450,7 +424,7 @@ function retryFullscreenOnUserGesture(): void {
     };
   }
 
-  function worldToCanvas(x: number, y: number): Vec2Value {
+  function worldToCanvas(x: number, y: number): Vector2 {
     const metrics = getCanvasMetrics();
     return {
       x: x * SCALE,
@@ -468,20 +442,6 @@ function retryFullscreenOnUserGesture(): void {
 
   function chooseDifferent<T>(options: readonly T[], currentValue: T): T {
     return randomItem(options.filter((value) => value !== currentValue));
-  }
-
-  function getTriangleVertices(size: number): Vec2Value[] {
-    return [
-      { x: 0, y: size },
-      { x: -size * 0.92, y: -size * 0.58 },
-      { x: size * 0.92, y: -size * 0.58 },
-    ];
-  }
-
-  function getShapeRadius(shape: Shape, size: number): number {
-    if (shape === "circle") return size;
-    if (shape === "square") return Math.hypot(size, size);
-    return size * 1.05;
   }
 
   function createEntityProperties(safeForAppearance: Appearance | null = null): Omit<Appearance, "size"> {
@@ -697,242 +657,6 @@ function togglePauseGame(): void {
   }
 }
 
-  function createPhysicsAdapter(): PhysicsAdapter {
-    let world: PhysicsWorld | null = null;
-    let nextBodyId = 1;
-    let wallBodyIds: PhysicsBodyId[] = [];
-    let queuedContacts: Array<{ bodyIdA: PhysicsBodyId; bodyIdB: PhysicsBodyId }> = [];
-    let passThroughPredicate: ContactPassThroughPredicate | null = null;
-    const bodies = new Map<PhysicsBodyId, Body>();
-
-    function createShapeGeometry(shape: Shape, size: number): PhysicsShape {
-      if (shape === "circle") return Circle(size);
-      if (shape === "square") return Box(size, size);
-      return Polygon(getTriangleVertices(size).map((vertex) => Vec2(vertex.x, vertex.y)));
-    }
-
-    function createFixtureOptions(shape: Shape, size: number): FixtureDef {
-      return {
-        shape: createShapeGeometry(shape, size),
-        density: 1,
-        friction: 0,
-        restitution: 1,
-      };
-    }
-
-    function clearFixtures(body: Body): void {
-      for (let fixture = body.getFixtureList(); fixture; ) {
-        const next = fixture.getNext();
-        body.destroyFixture(fixture);
-        fixture = next;
-      }
-    }
-
-    function createWalls(bounds: Bounds): void {
-      if (!world) return;
-
-      const halfThickness = WALL_THICKNESS * 0.5;
-      const wallDefs = [
-        { x: bounds.width * 0.5, y: -halfThickness, hx: bounds.width * 0.5, hy: halfThickness },
-        { x: bounds.width * 0.5, y: bounds.height + halfThickness, hx: bounds.width * 0.5, hy: halfThickness },
-        { x: -halfThickness, y: bounds.height * 0.5, hx: halfThickness, hy: bounds.height * 0.5 },
-        { x: bounds.width + halfThickness, y: bounds.height * 0.5, hx: halfThickness, hy: bounds.height * 0.5 },
-      ];
-
-      const currentWorld = world;
-
-      wallBodyIds = wallDefs.map((wallDef) => {
-        const bodyId = nextBodyId++;
-        const bodyDefinition: BodyDef = {
-          type: "static",
-          position: Vec2(wallDef.x, wallDef.y),
-          userData: { bodyId, kind: "wall" satisfies PhysicsBodyKind },
-        };
-        const body = currentWorld.createBody(bodyDefinition);
-
-        body.createFixture({
-          shape: Box(wallDef.hx, wallDef.hy),
-          friction: 0,
-          restitution: 1,
-        });
-
-        bodies.set(bodyId, body);
-        return bodyId;
-      });
-    }
-
-    function destroyWalls(): void {
-      if (!world) return;
-
-      for (const bodyId of wallBodyIds) {
-        const body = bodies.get(bodyId);
-        if (!body) continue;
-        world.destroyBody(body);
-        bodies.delete(bodyId);
-      }
-
-      wallBodyIds = [];
-    }
-
-    return {
-      createWorld(bounds) {
-        world = new PhysicsWorld(Vec2(0, 0));
-        const nextWorld = world;
-        nextBodyId = 1;
-        wallBodyIds = [];
-        queuedContacts = [];
-        bodies.clear();
-
-        const shouldPassThroughContact = (contact: Contact): boolean => {
-          if (!passThroughPredicate) return false;
-          const bodyIdA = (contact.getFixtureA().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
-          const bodyIdB = (contact.getFixtureB().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
-          if (bodyIdA === null || bodyIdB === null) return false;
-          return passThroughPredicate(bodyIdA, bodyIdB);
-        };
-
-        nextWorld.on("begin-contact", (contact: Contact) => {
-          const bodyIdA = (contact.getFixtureA().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
-          const bodyIdB = (contact.getFixtureB().getBody().getUserData() as PlanckBodyUserData | undefined)?.bodyId ?? null;
-
-          if (bodyIdA === null || bodyIdB === null) return;
-
-          if (shouldPassThroughContact(contact)) {
-            contact.setEnabled(false);
-          }
-
-          queuedContacts.push({ bodyIdA, bodyIdB });
-        });
-
-        nextWorld.on("pre-solve", (contact: Contact) => {
-          if (shouldPassThroughContact(contact)) {
-            contact.setEnabled(false);
-          }
-        });
-
-        createWalls(bounds);
-      },
-
-      destroyWorld() {
-        if (!world) return;
-
-        for (const body of bodies.values()) {
-          world.destroyBody(body);
-        }
-
-        bodies.clear();
-        wallBodyIds = [];
-        queuedContacts = [];
-        world = null;
-      },
-
-      createDynamicBody(spec) {
-        if (!world) {
-          throw new Error("Physics world is not initialized");
-        }
-
-        const bodyId = nextBodyId++;
-        const bodyDefinition: BodyDef = {
-          type: "dynamic",
-          position: Vec2(spec.position.x, spec.position.y),
-          angle: spec.angle,
-          linearDamping: spec.linearDamping,
-          angularDamping: spec.angularDamping,
-          bullet: spec.bullet,
-          userData: { bodyId, kind: "entity" satisfies PhysicsBodyKind, entityId: spec.entityId },
-        };
-        const body = world.createBody(bodyDefinition);
-
-        body.createFixture(createFixtureOptions(spec.shape, spec.size));
-        body.setLinearVelocity(Vec2(spec.velocity.x, spec.velocity.y));
-        body.setAngularVelocity(spec.angularVelocity);
-        bodies.set(bodyId, body);
-        return bodyId;
-      },
-
-      destroyBody(bodyId) {
-        if (!world) return;
-        const body = bodies.get(bodyId);
-        if (!body) return;
-        world.destroyBody(body);
-        bodies.delete(bodyId);
-      },
-
-      setShape(bodyId, shapeSpec) {
-        const body = bodies.get(bodyId);
-        if (!body) return;
-        clearFixtures(body);
-        body.createFixture(createFixtureOptions(shapeSpec.shape, shapeSpec.size));
-        body.resetMassData();
-      },
-
-      setVelocity(bodyId, velocity) {
-        const body = bodies.get(bodyId);
-        if (!body) return;
-        body.setLinearVelocity(Vec2(velocity.x, velocity.y));
-      },
-
-      getVelocity(bodyId) {
-        const body = bodies.get(bodyId);
-        if (!body) return null;
-
-        const velocity = body.getLinearVelocity();
-        return { x: velocity.x, y: velocity.y };
-      },
-
-      setSpeedAlongDirection(bodyId, direction, speed) {
-        const body = bodies.get(bodyId);
-        const normalizedDirection = normalizeVector(direction);
-        if (!body || !normalizedDirection) return;
-
-        body.setLinearVelocity(Vec2(normalizedDirection.x * speed, normalizedDirection.y * speed));
-      },
-
-      setContactPassThroughPredicate(predicate) {
-        passThroughPredicate = predicate;
-      },
-
-      step(dt) {
-        world?.step(dt);
-      },
-
-      readTransform(bodyId) {
-        const body = bodies.get(bodyId);
-        if (!body) return null;
-
-        const position = body.getPosition();
-        return {
-          x: position.x,
-          y: position.y,
-          angle: body.getAngle(),
-        };
-      },
-
-      resizeBounds(bounds, dynamicBodies) {
-        if (!world) return;
-
-        destroyWalls();
-        createWalls(bounds);
-
-        for (const dynamicBody of dynamicBodies) {
-          const body = bodies.get(dynamicBody.bodyId);
-          if (!body) continue;
-
-          const nextX = clamp(dynamicBody.x, dynamicBody.radius, bounds.width - dynamicBody.radius);
-          const nextY = clamp(dynamicBody.y, dynamicBody.radius, bounds.height - dynamicBody.radius);
-          body.setPosition(Vec2(nextX, nextY));
-          body.setAwake(true);
-        }
-      },
-
-      drainCollisionEvents() {
-        const events = queuedContacts;
-        queuedContacts = [];
-        return events;
-      },
-    };
-  }
-
   function getPlayerEntity(): PlayerEntity | null {
     for (const entity of game.queries.players) {
       return entity;
@@ -986,7 +710,7 @@ function togglePauseGame(): void {
     return null;
   }
 
-  function findSpawnPosition(options: { padding: number; shape: Shape; size: number }): Vec2Value {
+  function findSpawnPosition(options: { padding: number; shape: Shape; size: number }): Vector2 {
     const bounds = getWorldBounds();
     const radius = getShapeRadius(options.shape, options.size);
     const minX = radius + WALL_THICKNESS + 0.2;
@@ -1507,7 +1231,7 @@ function togglePauseGame(): void {
 
   function resetRuntime(): void {
     game.physicsAdapter?.destroyWorld();
-    game.physicsAdapter = createPhysicsAdapter();
+    game.physicsAdapter = createPlanckPhysicsAdapter();
     game.physicsAdapter.createWorld(getWorldBounds());
     game.physicsAdapter.setContactPassThroughPredicate((bodyIdA, bodyIdB) => {
       const player = getPlayerEntity();

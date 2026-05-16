@@ -178,12 +178,6 @@ export type QuerySet = {
   settings: Query<SettingsEntity>;
 };
 
-export type PlanckBodyUserData = {
-  bodyId: PhysicsBodyId;
-  kind: PhysicsBodyKind;
-  entityId?: EntityId;
-};
-
 export type PhysicsBodySnapshot = {
   bodyId: PhysicsBodyId;
   radius: number;
