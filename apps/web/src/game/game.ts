@@ -53,6 +53,13 @@ import {
   syncSettingsStateWithProfile,
 } from "./gameplay-profile.ts";
 import {
+  areAllPropertiesDifferent,
+  collectPlayerCollisionEvent,
+  getCollisionEventPairKey,
+  resolveCollisionEvent,
+  shouldPlayerContactPassThrough,
+} from "./game-rules.ts";
+import {
   configureSettingsController,
   notifySettingsStateListeners,
 } from "../settings/settings-controller.ts";
@@ -430,14 +437,6 @@ function retryFullscreenOnUserGesture(): void {
       x: x * SCALE,
       y: metrics.heightCss - y * SCALE,
     };
-  }
-
-  function areAllPropertiesDifferent(sourceAppearance: Appearance, targetAppearance: Appearance): boolean {
-    return (
-      sourceAppearance.shape !== targetAppearance.shape &&
-      sourceAppearance.color !== targetAppearance.color &&
-      sourceAppearance.fillStyle !== targetAppearance.fillStyle
-    );
   }
 
   function chooseDifferent<T>(options: readonly T[], currentValue: T): T {
@@ -890,47 +889,14 @@ function togglePauseGame(): void {
       const entityB = getEntityByBodyId(rawEvent.bodyIdB);
       if (!entityA || !entityB) continue;
 
-      const playerEntity = entityA.player ? entityA : entityB.player ? entityB : null;
-      if (!playerEntity) continue;
+      const collision = collectPlayerCollisionEvent(entityA, entityB);
+      if (!collision) continue;
 
-      const targetEntity = entityA.target ? entityA : entityB.target ? entityB : null;
-      const lifeEntity = entityA.lifePickup ? entityA : entityB.lifePickup ? entityB : null;
-      const coinEntity = entityA.coinPickup ? entityA : entityB.coinPickup ? entityB : null;
-      if (!targetEntity && !lifeEntity && !coinEntity) continue;
-
-      const pairKey = `${playerEntity.id}:${
-        targetEntity?.id
-        ?? (lifeEntity ? `life:${lifeEntity.id}` : coinEntity ? `coin:${coinEntity.id}` : "unknown")
-      }`;
+      const pairKey = getCollisionEventPairKey(collision);
       if (uniquePairs.has(pairKey)) continue;
 
       uniquePairs.add(pairKey);
-
-      if (targetEntity) {
-        game.queues.collisionEvents.push({
-          type: "player-target",
-          playerId: playerEntity.id,
-          targetId: targetEntity.id,
-        });
-        continue;
-      }
-
-      if (lifeEntity) {
-        game.queues.collisionEvents.push({
-          type: "player-life",
-          playerId: playerEntity.id,
-          lifeId: lifeEntity.id,
-        });
-        continue;
-      }
-
-      if (coinEntity) {
-        game.queues.collisionEvents.push({
-          type: "player-coin",
-          playerId: playerEntity.id,
-          coinId: coinEntity.id,
-        });
-      }
+      game.queues.collisionEvents.push(collision);
     }
   }
 
@@ -944,47 +910,27 @@ function togglePauseGame(): void {
       const collision = game.queues.collisionEvents.shift();
       if (!collision) continue;
 
-      if (collision.type === "player-life") {
-        game.queues.gameplay.push({
-          type: "collect-life",
-          playerId: collision.playerId,
-          lifeId: collision.lifeId,
-        });
-        continue;
-      }
+      const resolution = collision.type === "player-target"
+        ? (() => {
+            const player = getEntityById(collision.playerId);
+            const target = getEntityById(collision.targetId);
+            if (!player || !target) return null;
 
-      if (collision.type === "player-coin") {
-        game.queues.gameplay.push({
-          type: "collect-coin",
-          playerId: collision.playerId,
-          coinId: collision.coinId,
-        });
-        continue;
-      }
+            return resolveCollisionEvent({
+              collision,
+              lives: game.lives,
+              playerAppearance: player.appearance,
+              targetAppearance: target.appearance,
+            });
+          })()
+        : resolveCollisionEvent({ collision });
 
-      const player = getEntityById(collision.playerId);
-      const target = getEntityById(collision.targetId);
-      if (!player || !target) continue;
+      if (!resolution) continue;
 
-      if (areAllPropertiesDifferent(player.appearance, target.appearance)) {
-        game.queues.gameplay.push({
-          type: "consume-target",
-          playerId: player.id,
-          targetId: target.id,
-        });
-        continue;
+      game.queues.gameplay.push(resolution.command);
+      if (resolution.shouldStopResolving) {
+        break;
       }
-
-      if (game.lives > 1) {
-        game.queues.gameplay.push({
-          type: "lose-life",
-          playerId: player.id,
-          targetId: target.id,
-        });
-      } else {
-        game.queues.gameplay.push({ type: "game-over" });
-      }
-      break;
     }
   }
 
@@ -1244,12 +1190,7 @@ function togglePauseGame(): void {
       const otherEntity = getEntityByBodyId(otherBodyId);
       if (!otherEntity) return false;
 
-      if (isDamageInvulnerabilityActive()) {
-        return !!(otherEntity.target || otherEntity.lifePickup || otherEntity.coinPickup);
-      }
-
-      if (otherEntity.lifePickup || otherEntity.coinPickup) return true;
-      return !!otherEntity.target;
+      return shouldPlayerContactPassThrough(otherEntity, isDamageInvulnerabilityActive());
     });
     clearGameplayEntities();
     updateGameplayProfile();

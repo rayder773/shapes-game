@@ -525,6 +525,30 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### Gameplay Rules Boundary
+
+- Добавлен `src/game/game-rules.ts` как pure module для collision/rules decisions.
+- Из `src/game/game.ts` вынесены pure decisions:
+  - проверка safe target match через `areAllPropertiesDifferent(...)`;
+  - классификация пары collided entities в `CollisionEvent`;
+  - stable pair key для dedupe collision events;
+  - resolution `CollisionEvent` в `GameplayCommand`;
+  - pass-through decision для player contacts.
+- `src/game/game.ts` сохранил orchestration и side effects:
+  - ECS entity lookup;
+  - mutation queues;
+  - gameplay state mutations;
+  - physics adapter calls;
+  - render calls;
+  - analytics/PWA integration.
+- Добавлен `test/game-rules.spec.ts`, который проверяет rules module без DOM, Planck и gameplay loop.
+- Existing gameplay integration coverage сохранен через `test/gameplay-core.spec.ts`.
+- Проверки после инкремента:
+  - `./node_modules/.bin/tsc -p apps/web/tsconfig.json --noEmit` проходит;
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
 ### 1. Разделить Оставшийся Game Facade
@@ -533,9 +557,8 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 Ближайшие кандидаты:
 
-- gameplay rules helpers — вынести pure logic вроде appearance matching и collision outcome decisions;
 - spawn helpers/systems — вынести spawn position/radius usage, spawn planning/apply;
-- gameplay systems — постепенно вынести physics step, collision collection, rule resolution, spawn planning/apply;
+- gameplay systems — постепенно вынести physics step, velocity normalization, collision collection orchestration, spawn planning/apply;
 - lifecycle/integration boundary — отделить PWA/analytics/fullscreen/app route orchestration от gameplay systems.
 
 Целевой формат остается:
