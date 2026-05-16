@@ -4,7 +4,6 @@ import {
 import {
   getShapeRadius,
   normalizeVector,
-  WALL_THICKNESS,
   type Vector2,
 } from "./game-geometry.ts";
 import { createPlanckPhysicsAdapter } from "./planck-physics-adapter.ts";
@@ -53,12 +52,18 @@ import {
   syncSettingsStateWithProfile,
 } from "./gameplay-profile.ts";
 import {
-  areAllPropertiesDifferent,
   collectPlayerCollisionEvent,
   getCollisionEventPairKey,
   resolveCollisionEvent,
   shouldPlayerContactPassThrough,
 } from "./game-rules.ts";
+import {
+  createSpawnAppearance,
+  createSpawnRequests,
+  findSpawnPosition,
+  getDesiredTargetCount,
+  type SpawnRandom,
+} from "./game-spawn.ts";
 import {
   configureSettingsController,
   notifySettingsStateListeners,
@@ -70,9 +75,7 @@ import {
   type AppearancePhysicsEntity,
   type Bounds,
   type CanvasMetrics,
-  type ColorName,
   type EntityId,
-  type FillStyleName,
   type GameEntity,
   type GameplayProfile,
   type InputKey,
@@ -84,7 +87,6 @@ import {
   type PhysicsEntity,
   type PlayerEntity,
   type SettingsEntity,
-  type Shape,
 } from "./game-runtime.ts";
 
 type FullscreenDocument = Document & {
@@ -113,14 +115,7 @@ const PLAYER_BOOST_DURATION_MS = 350;
 const DAMAGE_INVULNERABILITY_MS = 900;
 const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.6;
-const ENTITY_SIZE = 0.55;
-const LIFE_ENTITY_SIZE = 0.42;
-const COIN_ENTITY_SIZE = 0.4;
 const COIN_BONUS_MULTIPLIER = 2;
-const MAX_SPAWN_ATTEMPTS = 80;
-const SHAPES: Shape[] = ["circle", "square", "triangle"];
-const COLORS: ColorName[] = ["red", "blue", "green"];
-const FILL_STYLES: FillStyleName[] = ["filled", "outline", "dashed"];
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
 const BEST_SCORE_STORAGE_KEY = "shapes-game.bestScore";
 const GAME_RULES = [
@@ -419,6 +414,11 @@ function retryFullscreenOnUserGesture(): void {
     return min + Math.random() * (max - min);
   }
 
+  const spawnRandom: SpawnRandom = {
+    item: randomItem,
+    range: randomRange,
+  };
+
   function getCanvasMetrics(): CanvasMetrics {
     return game.canvasMetrics;
   }
@@ -437,63 +437,6 @@ function retryFullscreenOnUserGesture(): void {
       x: x * SCALE,
       y: metrics.heightCss - y * SCALE,
     };
-  }
-
-  function chooseDifferent<T>(options: readonly T[], currentValue: T): T {
-    return randomItem(options.filter((value) => value !== currentValue));
-  }
-
-  function createEntityProperties(safeForAppearance: Appearance | null = null): Omit<Appearance, "size"> {
-    if (!safeForAppearance) {
-      return {
-        shape: randomItem(SHAPES),
-        color: randomItem(COLORS),
-        fillStyle: randomItem(FILL_STYLES),
-      };
-    }
-
-    return {
-      shape: chooseDifferent(SHAPES, safeForAppearance.shape),
-      color: chooseDifferent(COLORS, safeForAppearance.color),
-      fillStyle: chooseDifferent(FILL_STYLES, safeForAppearance.fillStyle),
-    };
-  }
-
-  function createLifePickupAppearance(): Appearance {
-    return {
-      shape: "square",
-      color: "green",
-      fillStyle: "outline",
-      size: LIFE_ENTITY_SIZE,
-    };
-  }
-
-  function createCoinPickupAppearance(): Appearance {
-    return {
-      shape: "circle",
-      color: "red",
-      fillStyle: "outline",
-      size: COIN_ENTITY_SIZE,
-    };
-  }
-
-  function getDesiredTargetCount(score: number): number {
-    const profile = getGameplayProfile();
-    const startTargetCount = Math.min(profile.startTargetCount, profile.maxTargets);
-    const minTargetsAfterScore = Math.min(profile.minTargetsAfterScore, profile.maxTargets);
-
-    if (score === 0) {
-      return startTargetCount;
-    }
-
-    if (profile.targetGrowthScoreStep <= 0) {
-      return minTargetsAfterScore;
-    }
-
-    return Math.min(
-      minTargetsAfterScore + Math.floor(score / profile.targetGrowthScoreStep),
-      profile.maxTargets,
-    );
   }
 
 function clearInputState(): void {
@@ -709,43 +652,6 @@ function togglePauseGame(): void {
     return null;
   }
 
-  function findSpawnPosition(options: { padding: number; shape: Shape; size: number }): Vector2 {
-    const bounds = getWorldBounds();
-    const radius = getShapeRadius(options.shape, options.size);
-    const minX = radius + WALL_THICKNESS + 0.2;
-    const maxX = bounds.width - radius - WALL_THICKNESS - 0.2;
-    const minY = radius + WALL_THICKNESS + 0.2;
-    const maxY = bounds.height - radius - WALL_THICKNESS - 0.2;
-    const blockers = [...game.queries.physicsBodies];
-
-    for (let attempt = 0; attempt < MAX_SPAWN_ATTEMPTS; attempt += 1) {
-      const candidate = {
-        x: randomRange(minX, Math.max(minX, maxX)),
-        y: randomRange(minY, Math.max(minY, maxY)),
-      };
-      let overlaps = false;
-
-      for (const other of blockers) {
-        const distance = Math.hypot(candidate.x - other.transform.x, candidate.y - other.transform.y);
-        const minDistance = radius + other.physics.radius + options.padding;
-
-        if (distance < minDistance) {
-          overlaps = true;
-          break;
-        }
-      }
-
-      if (!overlaps) {
-        return candidate;
-      }
-    }
-
-    return {
-      x: randomRange(minX, Math.max(minX, maxX)),
-      y: randomRange(minY, Math.max(minY, maxY)),
-    };
-  }
-
   function createFigureEntity(options: {
     role: "player" | "target" | "lifePickup" | "coinPickup";
     appearance?: Appearance | null;
@@ -757,16 +663,11 @@ function togglePauseGame(): void {
     const isCoinPickup = options.role === "coinPickup";
     const profile = getGameplayProfile();
     const spawnPadding = options.spawnPadding ?? profile.spawnPadding;
-    const nextAppearance: Appearance = options.appearance ?? {
-      ...(
-        isLifePickup
-          ? createLifePickupAppearance()
-          : isCoinPickup
-            ? createCoinPickupAppearance()
-            : createEntityProperties(options.safeForAppearance ?? null)
-      ),
-      size: isLifePickup ? LIFE_ENTITY_SIZE : isCoinPickup ? COIN_ENTITY_SIZE : ENTITY_SIZE,
-    };
+    const nextAppearance = options.appearance ?? createSpawnAppearance(
+      options.role,
+      options.safeForAppearance ?? null,
+      spawnRandom,
+    );
     const initialDirection = getRandomDirection();
 
     const entity: InteractiveEntity & ({ player: true } | { target: true } | { lifePickup: true } | { coinPickup: true }) = {
@@ -783,9 +684,16 @@ function togglePauseGame(): void {
     };
 
     const spawn = findSpawnPosition({
+      bounds: getWorldBounds(),
+      blockers: [...game.queries.physicsBodies].map((entity) => ({
+        x: entity.transform.x,
+        y: entity.transform.y,
+        radius: entity.physics.radius,
+      })),
       padding: spawnPadding,
       shape: nextAppearance.shape,
       size: nextAppearance.size,
+      random: spawnRandom,
     });
 
     const adapter = game.physicsAdapter;
@@ -1063,35 +971,14 @@ function togglePauseGame(): void {
   function SpawnPlanningSystem(): void {
     if (game.state !== "playing") return;
 
-    const desiredTargetCount = getDesiredTargetCount(game.score);
-    const currentTargetCount = getTargetCount();
-
-    for (let count = currentTargetCount; count < desiredTargetCount; count += 1) {
-      game.queues.spawns.push({
-        type: "spawn-target",
-        safeForPlayer: false,
-      });
-    }
-
     const player = getPlayerEntity();
-    if (!player) return;
-
-    let hasSafeTarget = false;
-
-    for (const target of game.queries.targets) {
-      if (areAllPropertiesDifferent(player.appearance, target.appearance)) {
-        hasSafeTarget = true;
-        break;
-      }
-    }
-
-    if (!hasSafeTarget) {
-      game.queues.spawns.push({
-        type: "spawn-target",
-        safeForPlayer: true,
-        safeAppearance: player.appearance,
-      });
-    }
+    game.queues.spawns.push(...createSpawnRequests({
+      profile: getGameplayProfile(),
+      score: game.score,
+      currentTargetCount: getTargetCount(),
+      playerAppearance: player?.appearance ?? null,
+      targetAppearances: [...game.queries.targets].map((target) => target.appearance),
+    }));
   }
 
   function SpawnApplySystem(): void {
@@ -1221,8 +1108,8 @@ function togglePauseGame(): void {
 
   function seedWorld(): void {
     createFigureEntity({ role: "player" });
-    const desiredTargetCount = getDesiredTargetCount(0);
     const profile = getGameplayProfile();
+    const desiredTargetCount = getDesiredTargetCount(profile, 0);
     const startPadding = profile.compactTouch ? profile.safeSpawnPadding : profile.spawnPadding;
 
     for (let index = 0; index < desiredTargetCount; index += 1) {

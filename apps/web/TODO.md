@@ -549,6 +549,28 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### Spawn Boundary
+
+- Добавлен `src/game/game-spawn.ts` как pure module для spawn decisions.
+- Из `src/game/game.ts` вынесены:
+  - расчет desired target count;
+  - планирование `SpawnRequest[]` для normal targets и safe target fallback;
+  - создание appearance для target/player, life pickup и coin pickup;
+  - выбор spawn position с учетом bounds, radius, blockers и padding.
+- `src/game/game.ts` сохранил ownership над применением spawn:
+  - чтение ECS queries;
+  - создание ECS entity;
+  - создание physics body;
+  - запись transform/bodyId;
+  - добавление entity в world.
+- Добавлен `test/game-spawn.spec.ts`, который проверяет spawn decisions без DOM, Planck и gameplay loop.
+- Existing gameplay integration coverage сохранен через `test/gameplay-core.spec.ts`.
+- Проверки после инкремента:
+  - `./node_modules/.bin/tsc -p apps/web/tsconfig.json --noEmit` проходит;
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
 ### 1. Разделить Оставшийся Game Facade
@@ -557,8 +579,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 Ближайшие кандидаты:
 
-- spawn helpers/systems — вынести spawn position/radius usage, spawn planning/apply;
-- gameplay systems — постепенно вынести physics step, velocity normalization, collision collection orchestration, spawn planning/apply;
+- gameplay systems — постепенно вынести physics step, velocity normalization, collision collection orchestration и spawn apply orchestration;
 - lifecycle/integration boundary — отделить PWA/analytics/fullscreen/app route orchestration от gameplay systems.
 
 Целевой формат остается:
