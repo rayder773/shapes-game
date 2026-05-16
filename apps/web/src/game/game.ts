@@ -24,6 +24,10 @@ import {
   createCanvasRenderer,
   type CanvasRenderer,
 } from "./canvas-renderer.ts";
+import {
+  createBrowserGameInput,
+  type BrowserGameInputEvent,
+} from "./browser-game-input.ts";
 import type { DomGameUi, DomGameUiEvent } from "./dom-game-ui.ts";
 import {
   flushAnalyticsEvents,
@@ -110,8 +114,6 @@ const MAX_FRAME_DT = 1 / 24;
 const MIN_POINTER_TARGET_DISTANCE = 10;
 const PLAYER_BOOST_DURATION_MS = 350;
 const DAMAGE_INVULNERABILITY_MS = 900;
-const DOUBLE_TAP_WINDOW_MS = 300;
-const DOUBLE_TAP_RADIUS_PX = 40;
 const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.6;
 const ENTITY_SIZE = 0.55;
@@ -124,8 +126,6 @@ const MIN_DIRECTION_LENGTH = 0.0001;
 const SHAPES: Shape[] = ["circle", "square", "triangle"];
 const COLORS: ColorName[] = ["red", "blue", "green"];
 const FILL_STYLES: FillStyleName[] = ["filled", "outline", "dashed"];
-const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"]);
-const PAUSE_KEY = "escape";
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
 const BEST_SCORE_STORAGE_KEY = "shapes-game.bestScore";
 const GAME_RULES = [
@@ -424,66 +424,6 @@ function scheduleInitialFullscreenAttempt(): void {
 function retryFullscreenOnUserGesture(): void {
   if (!shouldRetryFullscreen || isFullscreenActive()) return;
   void requestGameFullscreen();
-}
-
-function isInteractiveElement(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-
-  return Boolean(target.closest("button, a, input, select, textarea, summary, [role=\"button\"]"));
-}
-
-function installBrowserInteractionGuards(): void {
-  const touchOptions: AddEventListenerOptions = { passive: false };
-  const preventGesture = (event: Event): void => {
-    event.preventDefault();
-  };
-
-  document.addEventListener("touchstart", (event) => {
-    if (event.touches.length > 1) {
-      event.preventDefault();
-    }
-  }, touchOptions);
-
-  document.addEventListener("touchmove", (event) => {
-    if (event.touches.length > 1 || !isInteractiveElement(event.target)) {
-      event.preventDefault();
-    }
-  }, touchOptions);
-
-  document.addEventListener("gesturestart", preventGesture, touchOptions);
-  document.addEventListener("gesturechange", preventGesture, touchOptions);
-  document.addEventListener("gestureend", preventGesture, touchOptions);
-  document.addEventListener("wheel", (event) => {
-    if (event.ctrlKey) {
-      event.preventDefault();
-    }
-  }, touchOptions);
-}
-
-function installDoubleTapZoomGuard(element: HTMLElement): void {
-  const touchOptions: AddEventListenerOptions = { passive: false };
-  let lastTouchEndTime = 0;
-  let lastTouchX = 0;
-  let lastTouchY = 0;
-
-  element.addEventListener("touchend", (event) => {
-    if (event.changedTouches.length !== 1) return;
-
-    const touch = event.changedTouches[0];
-    const elapsed = event.timeStamp - lastTouchEndTime;
-    const isRapidSecondTap = elapsed > 0 && elapsed < 350;
-    const isNearbyTap =
-      Math.abs(touch.clientX - lastTouchX) < 24 &&
-      Math.abs(touch.clientY - lastTouchY) < 24;
-
-    lastTouchEndTime = event.timeStamp;
-    lastTouchX = touch.clientX;
-    lastTouchY = touch.clientY;
-
-    if (isRapidSecondTap && isNearbyTap) {
-      event.preventDefault();
-    }
-  }, touchOptions);
 }
 
   function randomItem<T>(items: readonly T[]): T {
@@ -1717,75 +1657,61 @@ function togglePauseGame(): void {
     renderApp();
   }
 
-  function setInputKey(key: string, isPressed: boolean): void {
-    if (key === "arrowup" || key === "w") setDirectionalInput("up", isPressed);
-    if (key === "arrowdown" || key === "s") setDirectionalInput("down", isPressed);
-    if (key === "arrowleft" || key === "a") setDirectionalInput("left", isPressed);
-    if (key === "arrowright" || key === "d") setDirectionalInput("right", isPressed);
-  }
-
   function installDomBindings(): void {
     if (hasInstalledDomBindings) return;
     hasInstalledDomBindings = true;
 
-    window.addEventListener("keydown", (event) => {
-      if (!isGameRouteActive) return;
+    function handleBrowserInputEvent(event: BrowserGameInputEvent): void {
+      if (event.type === "user-gesture") {
+        retryFullscreenOnUserGesture();
+        return;
+      }
 
-      const key = event.key.toLowerCase();
-      if (key === PAUSE_KEY) {
-        event.preventDefault();
+      if (event.type === "pause-toggle-requested") {
         togglePauseGame();
         return;
       }
 
-      if (!DIRECTIONAL_KEYS.has(key) || game.state !== "playing") return;
-      event.preventDefault();
-      setInputKey(key, true);
-      refreshPlayerDirectionFromKeyboard();
-    });
+      if (event.type === "direction-key-changed") {
+        setDirectionalInput(event.key, event.pressed);
+        refreshPlayerDirectionFromKeyboard();
+        return;
+      }
 
-    window.addEventListener("keyup", (event) => {
-      if (!isGameRouteActive) return;
+      if (event.type === "pointer-aim-requested") {
+        setPointerDirection(event.canvasX, event.canvasY);
+        return;
+      }
 
-      const key = event.key.toLowerCase();
-      if (!DIRECTIONAL_KEYS.has(key)) return;
-      event.preventDefault();
-      setInputKey(key, false);
-      refreshPlayerDirectionFromKeyboard();
-    });
+      if (event.type === "player-boost-requested") {
+        game.playerBoostExpiresAt = performance.now() + PLAYER_BOOST_DURATION_MS;
+        return;
+      }
 
-    window.addEventListener("blur", () => {
-      clearInputState();
-      clearActiveTouchInputs();
-      pauseGame(true);
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
+      if (event.type === "auto-pause-requested") {
         clearInputState();
         clearActiveTouchInputs();
         pauseGame(true);
+        return;
       }
-    });
 
-    window.addEventListener("resize", () => {
-      resizeCanvas();
+      if (event.type === "viewport-change-requested" || event.type === "fullscreen-change-requested") {
+        resizeCanvas();
+      }
+    }
+
+    const browserInput = createBrowserGameInput({
+      canvas,
+      modal: ui.modal,
+      window,
+      document,
+      visualViewport: window.visualViewport,
+      now: () => performance.now(),
+      isGameRouteActive: () => isGameRouteActive,
+      isGamePlaying: () => game.state === "playing",
     });
-    window.addEventListener("orientationchange", () => {
-      resizeCanvas();
-    });
-    window.visualViewport?.addEventListener("resize", () => {
-      resizeCanvas();
-    });
-    window.visualViewport?.addEventListener("scroll", () => {
-      resizeCanvas();
-    });
-    document.addEventListener("fullscreenchange", () => {
-      resizeCanvas();
-    });
-    document.addEventListener("webkitfullscreenchange", () => {
-      resizeCanvas();
-    });
+    browserInput.subscribe(handleBrowserInputEvent);
+    browserInput.install();
 
     function handleUiEvent(event: DomGameUiEvent): void {
       retryFullscreenOnUserGesture();
@@ -1837,40 +1763,6 @@ function togglePauseGame(): void {
     }
 
     ui.subscribe(handleUiEvent);
-
-    let lastPointerDownTime = 0;
-    let lastPointerDownX = 0;
-    let lastPointerDownY = 0;
-
-    canvas.addEventListener("pointerdown", (event) => {
-      retryFullscreenOnUserGesture();
-      if (!isGameRouteActive) return;
-      if (game.state !== "playing") return;
-
-      if (event.pointerType === "mouse" && event.button !== 0) return;
-
-      event.preventDefault();
-
-      const now = event.timeStamp || performance.now();
-      const elapsed = now - lastPointerDownTime;
-      const isDoubleTap =
-        elapsed > 0 &&
-        elapsed < DOUBLE_TAP_WINDOW_MS &&
-        Math.abs(event.clientX - lastPointerDownX) < DOUBLE_TAP_RADIUS_PX &&
-        Math.abs(event.clientY - lastPointerDownY) < DOUBLE_TAP_RADIUS_PX;
-      lastPointerDownTime = now;
-      lastPointerDownX = event.clientX;
-      lastPointerDownY = event.clientY;
-
-      if (isDoubleTap) {
-        game.playerBoostExpiresAt = performance.now() + PLAYER_BOOST_DURATION_MS;
-      }
-
-      setPointerDirection(event.clientX, event.clientY);
-    });
-
-    installBrowserInteractionGuards();
-    installDoubleTapZoomGuard(ui.modal);
     subscribeToPwaStateChanges(() => {
       renderApp();
 

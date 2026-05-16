@@ -116,7 +116,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 ### Read Model
 
-- Создан модуль `src/game-read-model.ts`.
+- Создан модуль `src/game/game-read-model.ts`.
 - Добавлена `GameReadModel` с основными секциями:
   - `state`
   - `hud`
@@ -140,7 +140,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 ### Game Runtime Bridge
 
-- В `src/game.ts` добавлены read-model exports:
+- В `src/game/game.ts` добавлены read-model exports:
   - `getGameReadModel()`
   - `getSettingsReadModel()`
   - `getPlayerModel()`
@@ -187,8 +187,8 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 ### App-Level Model
 
-- Создан `src/app-read-model.ts` с типами `AppReadModelShell` и `AppReadModel`.
-- В `src/game.ts` добавлен `export function getAppReadModel()`, агрегирующий `route` + `game` + `shell`.
+- Создан `src/app/app-read-model.ts` с типами `AppReadModelShell` и `AppReadModel`.
+- В `src/game/game.ts` добавлен `export function getAppReadModel()`, агрегирующий `route` + `game` + `shell`.
 - В тест-бридж (`vitest.config.ts`) добавлен `appModel: () => getAppReadModel()`.
 - В `src/vite-env.d.ts` добавлены типы `AntiMatchAppShell`, `AntiMatchAppSnapshot`, поле `appModel` в `AntiMatchTestApi`.
 - В `test/helpers.ts` добавлен хелпер `appModel()`.
@@ -196,7 +196,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 ### UI Adapter Increment
 
-- Добавлен `src/dom-game-ui.ts` как первый DOM adapter для game UI.
+- Добавлен `src/game/dom-game-ui.ts` как первый DOM adapter для game UI.
 - Adapter валидирует DOM-элементы canvas/HUD/overlay и наружу отдает:
   - `render(model: AppReadModel)`;
   - `subscribe(listener)` для semantic UI events.
@@ -204,7 +204,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - сохранено `mode`;
   - добавлено `view`;
   - overlay buttons теперь несут semantic `action`, например `resume`, `restart`, `acceptOnboarding`, `openSettings`, `confirmInstall`, `dismissInstall`.
-- `game.ts` больше не рендерит HUD/overlay напрямую:
+- `src/game/game.ts` больше не рендерит HUD/overlay напрямую:
   - удалены прямые `updateHud()`, `renderOverlay()`, `hideOverlay()` DOM-операции;
   - runtime меняет игровое состояние и вызывает `renderApp()`;
   - `renderApp()` строит `getAppReadModel()` и передает снимок в `ui.render(model)`.
@@ -221,7 +221,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Закрепить Контракт UI Adapter
+### UI Adapter Contract
 
 - Добавлен отдельный `test/dom-game-ui.spec.ts`.
 - Тест напрямую создает DOM adapter на markup из `index.html`.
@@ -237,10 +237,10 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Доделать UI Adapter Boundary
+### UI Adapter Boundary
 
-- `game.ts` больше не создает `createDomGameUi()` напрямую.
-- `game.ts` больше не делает direct `document.getElementById("game")` и `canvas.getContext("2d")` на import.
+- `src/game/game.ts` больше не создает `createDomGameUi()` напрямую.
+- `src/game/game.ts` больше не делает direct `document.getElementById("game")` и `canvas.getContext("2d")` на import.
 - Добавлен тип `GameDomDependencies`.
 - `initializeGame(dependencies)` получает:
   - `canvas`;
@@ -253,21 +253,21 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - создает DOM game UI adapter;
   - передает зависимости в `initializeGame(...)`.
 - Runtime listener bindings для UI/canvas/window/document перенесены в initialization path, а не выполняются при import `game.ts`.
-- Keyboard/pointer/resize/fullscreen guards пока оставлены в runtime, как и планировалось.
+- Keyboard/pointer/resize/fullscreen guards на этом этапе еще оставались в runtime.
 - Проверки после инкремента:
   - `npm run test --workspace web` проходит;
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Расширить UI Boundary До App Shell И Settings
+### App Shell And Settings UI Boundary
 
-- Добавлен `src/dom-app-ui.ts` как app-level DOM adapter.
+- Добавлен `src/app/dom-app-ui.ts` как app-level DOM adapter.
 - App UI adapter рендерит из `AppReadModel`:
   - game UI через существующий `DomGameUi`;
   - settings page visibility/state;
   - admin page visibility;
   - `document.body.dataset.route`.
-- `settings-page.ts` переведен на adapter-style contract:
+- `src/settings/settings-page.ts` переведен на adapter-style contract:
   - `render(model: AppReadModel)`;
   - `subscribe(listener)` с semantic events `settings-change`, `settings-reset`, `settings-save`.
 - `main.ts` больше не передает settings callbacks в constructor и не выставляет settings visibility напрямую:
@@ -280,9 +280,9 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Вынести App Controller Boundary
+### App Controller Boundary
 
-- Добавлен `src/app-controller.ts` как тонкий слой orchestration между router/settings UI/game API.
+- Добавлен `src/app/app-controller.ts` как тонкий слой orchestration между router/settings UI/game API.
 - `main.ts` стал bootstrap layer:
   - создает DOM adapters;
   - инициализирует game dependencies;
@@ -299,35 +299,35 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Вынести Settings Controller Boundary
+### Settings Controller Boundary
 
-- Добавлен `src/settings-controller.ts` как владелец settings state operations.
-- Из `game.ts` вынесены:
+- Добавлен `src/settings/settings-controller.ts` как владелец settings state operations.
+- Из `src/game/game.ts` вынесены:
   - settings listeners/subscription;
   - `updateSettingsDraft`;
   - `resetSettingsDraftToDefaults`;
   - `persistActiveProfileSettings`.
-- `game.ts` конфигурирует settings controller через dependencies:
+- `src/game/game.ts` конфигурирует settings controller через dependencies:
   - `getSettingsEntity`;
   - callback после сохранения активного профиля, который обновляет gameplay profile и помечает следующий заход на game route как restart.
-- `app-controller.ts` теперь импортирует settings use-cases из `settings-controller.ts`, а не из `game.ts`.
+- `src/app/app-controller.ts` теперь импортирует settings use-cases из `src/settings/settings-controller.ts`, а не из `src/game/game.ts`.
 - Добавлен `test/settings-controller.spec.ts` для проверки draft updates, coupling lives fields, reset, persist и subscriber notifications без DOM/game runtime.
 - Проверки после инкремента:
   - `npm run test --workspace web` проходит;
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Вынести Gameplay Profile Boundary
+### Gameplay Profile Boundary
 
-- Добавлен `src/gameplay-profile.ts` как владелец profile/defaults/settings sync логики.
-- Из `game.ts` вынесены:
+- Добавлен `src/game/gameplay-profile.ts` как владелец profile/defaults/settings sync логики.
+- Из `src/game/game.ts` вынесены:
   - default desktop/compactTouch profile creation;
   - active profile key calculation;
   - conversion `GameplayProfile` -> editable settings values;
   - saved override application;
   - settings entity initialization from saved settings;
   - profile/settings sync on viewport/device changes.
-- `game.ts` теперь вызывает profile service:
+- `src/game/game.ts` теперь вызывает profile service:
   - `createGameplayProfile` для runtime dependency;
   - `createSettingsEntityFromSavedSettings(...)` при initialization;
   - `syncSettingsStateWithProfile(...)` и `resolveGameplayProfile(...)` при profile update.
@@ -337,9 +337,9 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Разделить Canvas Renderer Boundary
+### Canvas Renderer Boundary
 
-- Добавлен `src/canvas-renderer.ts` с внутренним API:
+- Добавлен `src/game/canvas-renderer.ts` с внутренним API:
   - `createCanvasRenderer({ context, scale })`;
   - `CanvasRenderableEntity`;
   - `CanvasRendererMetrics`.
@@ -348,8 +348,8 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - player marker;
   - life/coin pickup drawing;
   - colors, line dash и invulnerability visual.
-- `game.ts` оставляет у себя resize, viewport metrics, physics bounds, input и fullscreen guards.
-- `game.ts` мапит `game.queries.renderables` в узкий renderer DTO:
+- `src/game/game.ts` оставляет у себя resize, viewport metrics, physics bounds, input и fullscreen guards.
+- `src/game/game.ts` мапит `game.queries.renderables` в узкий renderer DTO:
   - `id`;
   - `kind`;
   - `position`;
@@ -370,11 +370,11 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Перевести Canvas Renderer На Read Model
+### Canvas Renderer On Read Model
 
-- `src/canvas-renderer.ts` теперь принимает `GameReadModelEntity` из `GameReadModel.scene.entities`.
+- `src/game/canvas-renderer.ts` теперь принимает `GameReadModelEntity` из `GameReadModel.scene.entities`.
 - `CanvasRenderableEntity` сохранен как compatibility alias для текущих тестов и внешних imports.
-- `game.ts` больше не собирает canvas-specific DTO из ECS/runtime entity перед рендером.
+-- `src/game/game.ts` больше не собирает canvas-specific DTO из ECS/runtime entity перед рендером.
 - `renderSystem()` передает в renderer `getGameReadModel().scene.entities`.
 - Runtime-only invulnerability visual остался callback-зависимостью renderer-а и не добавлен в публичную read model.
 - `test/canvas-renderer.spec.ts` использует read-model-compatible entity shape.
@@ -384,10 +384,10 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Runtime Foundation
+### Runtime Foundation
 
-- Добавлен `src/game-runtime.ts` как внутренний runtime foundation module.
-- Из `game.ts` вынесены внутренние типы и factory helpers:
+- Добавлен `src/game/game-runtime.ts` как внутренний runtime foundation module.
+- Из `src/game/game.ts` вынесены внутренние типы и factory helpers:
   - entity/resource/runtime types;
   - ECS query set;
   - canvas metrics/input/queue factories;
@@ -396,7 +396,7 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `createGameplayProfile(metrics)`;
   - `startRound()`;
   - `now()`.
-- `game.ts` по-прежнему владеет поведением игры:
+- `src/game/game.ts` по-прежнему владеет поведением игры:
   - systems;
   - physics adapter implementation;
   - read-model builder;
@@ -412,17 +412,17 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Вынести Read Model Builder Boundary
+### Read Model Builder Boundary
 
-- Добавлен `src/game-read-model-builder.ts` как отдельный builder для публичной модели игры.
-- Из `game.ts` вынесены:
+- Добавлен `src/game/game-read-model-builder.ts` как отдельный builder для публичной модели игры.
+- Из `src/game/game.ts` вынесены:
   - mapping ECS/runtime entity в stable `GameReadModelEntity`;
   - сортировка `scene.entities`;
   - clone helper для публичных model values;
   - сборка `hud`, `roundResult`, `gameplayProfile`, `input`, `settings`;
   - сборка overlay view для onboarding, pause, gameOver и install.
-- Добавлен `src/app-read-model-builder.ts` для app-level shell visibility по route.
-- `game.ts` сохранен как compatibility facade:
+- Добавлен `src/app/app-read-model-builder.ts` для app-level shell visibility по route.
+- `src/game/game.ts` сохранен как compatibility facade:
   - `getGameReadModel()`;
   - `getAppReadModel()`;
   - `getSettingsReadModel()`;
@@ -438,14 +438,43 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
-### 1. Упростить Навигацию По Архитектуре
+### Browser Input Event Boundary
+
+- Добавлен `src/game/browser-game-input.ts` как browser input adapter.
+- Adapter слушает browser events и эмитит semantic synthetic events:
+  - `pause-toggle-requested`;
+  - `direction-key-changed`;
+  - `pointer-aim-requested`;
+  - `player-boost-requested`;
+  - `auto-pause-requested`;
+  - `viewport-change-requested`;
+  - `fullscreen-change-requested`;
+  - `user-gesture`.
+- `src/game/game.ts` больше не регистрирует напрямую:
+  - keyboard listeners;
+  - canvas `pointerdown`;
+  - `blur` / `visibilitychange`;
+  - viewport/fullscreen resize listeners;
+  - touch/gesture/wheel guards.
+- Runtime остается владельцем gameplay state:
+  - `game.input` все еще хранится в runtime и попадает в read model;
+  - pointer-to-direction logic остается в `game.ts`, потому что зависит от player position;
+  - fullscreen retry и gameplay pause/boost application остаются game-owned.
+- Добавлен `test/browser-game-input.spec.ts`, который проверяет browser-to-synthetic mapping без запуска gameplay runtime.
+- Проверки после инкремента:
+  - `./node_modules/.bin/tsc -p apps/web/tsconfig.json --noEmit` проходит;
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
+### Architecture Navigation
 
 - Файлы в `src/` сгруппированы по ролям:
   - `src/app/` — app controller, app read model, app-level DOM UI;
-  - `src/game/` — gameplay runtime, game read model, game UI, canvas renderer, gameplay profile/settings;
+  - `src/game/` — gameplay facade/runtime, read model, browser input adapter, game UI, canvas renderer, gameplay profile/settings;
   - `src/settings/` — settings controller и settings page adapter;
   - `src/platform/` — router, PWA, analytics, device detection.
-- `main.ts`, `icons.ts`, `admin/` и `vite-env.d.ts` оставлены на верхнем уровне/в текущих местах, потому что это entrypoint, shared utility, отдельная feature-папка и environment types.
+- `src/main.ts`, `src/icons.ts`, `src/admin/` и `src/vite-env.d.ts` оставлены на верхнем уровне/в текущих местах, потому что это entrypoint, shared utility, отдельная feature-папка и environment types.
 - Добавлен `ARCHITECTURE.md` с короткой картой ролей:
   - controller;
   - builder;
@@ -460,17 +489,16 @@ DSL должен быть render adapter-ом, а не фундаментом п
 
 ## Следующие Шаги
 
-### 1. Разделить Game Runtime
+### 1. Разделить Оставшийся Game Facade
 
-После UI/canvas adapter boundary можно безопасно дробить `game.ts`:
+После read model, UI/canvas и browser input boundaries можно безопасно дальше дробить `src/game/game.ts`.
 
-- types/components;
-- resources;
-- systems;
-- physics adapter;
-- read model builder;
-- analytics integration;
-- app lifecycle.
+Ближайшие кандидаты:
+
+- `planck-physics-adapter.ts` — убрать Planck-specific imports/implementation из facade;
+- shared geometry/rules helpers — вынести pure logic вроде shape radius, spawn/rule helpers;
+- gameplay systems — постепенно вынести physics step, collision collection, rule resolution, spawn planning/apply;
+- lifecycle/integration boundary — отделить PWA/analytics/fullscreen/app route orchestration от gameplay systems.
 
 Целевой формат остается:
 
