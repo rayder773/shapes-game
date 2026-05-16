@@ -259,6 +259,84 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### 1. Расширить UI Boundary До App Shell И Settings
+
+- Добавлен `src/dom-app-ui.ts` как app-level DOM adapter.
+- App UI adapter рендерит из `AppReadModel`:
+  - game UI через существующий `DomGameUi`;
+  - settings page visibility/state;
+  - admin page visibility;
+  - `document.body.dataset.route`.
+- `settings-page.ts` переведен на adapter-style contract:
+  - `render(model: AppReadModel)`;
+  - `subscribe(listener)` с semantic events `settings-change`, `settings-reset`, `settings-save`.
+- `main.ts` больше не передает settings callbacks в constructor и не выставляет settings visibility напрямую:
+  - settings events мапятся в `updateSettingsDraft`, `resetSettingsDraftToDefaults`, `persistActiveProfileSettings`;
+  - route changes рендерятся через `appUi.render(getAppReadModel())`.
+- Добавлен `test/settings-page.spec.ts`, который проверяет settings adapter без запуска gameplay runtime.
+- Admin page оставлен без глубокого рефакторинга, только подключен к app-level visibility.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
+### 1. Вынести App Controller Boundary
+
+- Добавлен `src/app-controller.ts` как тонкий слой orchestration между router/settings UI/game API.
+- `main.ts` стал bootstrap layer:
+  - создает DOM adapters;
+  - инициализирует game dependencies;
+  - запускает `initializeAppController(...)`.
+- В controller перенесены:
+  - route entry handling (`enterGamePage`, `enterSettingsPage`, `enterNonGamePage`);
+  - settings UI event handling;
+  - `setOpenSettingsListener`;
+  - подписка на settings state;
+  - router initialization/subscription;
+  - app-level render через `appUi.render(getAppReadModel())`.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
+### 1. Вынести Settings Controller Boundary
+
+- Добавлен `src/settings-controller.ts` как владелец settings state operations.
+- Из `game.ts` вынесены:
+  - settings listeners/subscription;
+  - `updateSettingsDraft`;
+  - `resetSettingsDraftToDefaults`;
+  - `persistActiveProfileSettings`.
+- `game.ts` конфигурирует settings controller через dependencies:
+  - `getSettingsEntity`;
+  - callback после сохранения активного профиля, который обновляет gameplay profile и помечает следующий заход на game route как restart.
+- `app-controller.ts` теперь импортирует settings use-cases из `settings-controller.ts`, а не из `game.ts`.
+- Добавлен `test/settings-controller.spec.ts` для проверки draft updates, coupling lives fields, reset, persist и subscriber notifications без DOM/game runtime.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
+### 1. Вынести Gameplay Profile Boundary
+
+- Добавлен `src/gameplay-profile.ts` как владелец profile/defaults/settings sync логики.
+- Из `game.ts` вынесены:
+  - default desktop/compactTouch profile creation;
+  - active profile key calculation;
+  - conversion `GameplayProfile` -> editable settings values;
+  - saved override application;
+  - settings entity initialization from saved settings;
+  - profile/settings sync on viewport/device changes.
+- `game.ts` теперь вызывает profile service:
+  - `createGameplayProfile` для runtime dependency;
+  - `createSettingsEntityFromSavedSettings(...)` при initialization;
+  - `syncSettingsStateWithProfile(...)` и `resolveGameplayProfile(...)` при profile update.
+- Добавлен `test/gameplay-profile.spec.ts` для проверки desktop/phone defaults, saved overrides и sync active profile changes без gameplay runtime.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ### 1. Разделить Canvas Renderer Boundary
 
 - Добавлен `src/canvas-renderer.ts` с внутренним API:

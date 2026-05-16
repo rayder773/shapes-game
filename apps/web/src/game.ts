@@ -12,18 +12,8 @@ import {
   type Vec2Value,
 } from "planck";
 import {
-  applyGameplayOverrides,
-  clampGameplaySettingValue,
-  createEmptySavedGameplaySettings,
-  createPersistableOverrides,
-  DEFAULT_TARGET_GROWTH_SCORE_STEP,
   loadSavedGameplaySettings,
-  saveGameplaySettings,
-  type GameplayProfileKey,
-  type GameplaySettingsValues,
-  type SavedGameplaySettings,
 } from "./gameplay-settings.ts";
-import { isPhoneDevice } from "./device.ts";
 import {
   createPwaOverlayViewModel,
   createPwaController,
@@ -53,6 +43,17 @@ import type {
   GameReadModelSettings,
 } from "./game-read-model.ts";
 import type { AppReadModel } from "./app-read-model.ts";
+import {
+  createGameplayProfile,
+  createSettingsEntityFromSavedSettings,
+  getGameplayProfileKey,
+  resolveGameplayProfile,
+  syncSettingsStateWithProfile,
+} from "./gameplay-profile.ts";
+import {
+  configureSettingsController,
+  notifySettingsStateListeners,
+} from "./settings-controller.ts";
 import {
   createQueues,
   createRuntime,
@@ -91,12 +92,6 @@ type FullscreenElement = HTMLElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
 };
 
-export type SettingsViewState = {
-  activeProfileKey: GameplayProfileKey;
-  draft: GameplaySettingsValues;
-};
-
-type SettingsStateListener = (state: SettingsViewState) => void;
 type OpenSettingsListener = () => void;
 
 export type GameDomDependencies = {
@@ -130,7 +125,6 @@ const DIRECTIONAL_KEYS = new Set<string>(["arrowup", "arrowdown", "arrowleft", "
 const PAUSE_KEY = "escape";
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
 const BEST_SCORE_STORAGE_KEY = "shapes-game.bestScore";
-const SETTINGS_ENTITY_ID = 0;
 const GAME_RULES = [
   "Клик, тап или клавиши мгновенно меняют направление, скорость всегда остается постоянной.",
   "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
@@ -141,7 +135,6 @@ let ctx: CanvasRenderingContext2D;
 let canvasRenderer: CanvasRenderer;
 let ui: DomGameUi;
 let rootStyle: CSSStyleDeclaration;
-const settingsStateListeners = new Set<SettingsStateListener>();
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
 const game = createRuntime({
@@ -157,63 +150,6 @@ let hasInstalledDomBindings = false;
 let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
 let lastPauseWasAutoPaused = false;
-
-function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
-  const compactTouch = isPhoneDevice();
-
-  if (compactTouch) {
-    return {
-      compactTouch,
-      startTargetCount: 5,
-      minTargetsAfterScore: 6,
-      targetSpeed: 2,
-      playerSpeed: 5,
-      playerBoostSpeed: 10,
-      maxTargets: 12,
-      targetGrowthScoreStep: DEFAULT_TARGET_GROWTH_SCORE_STEP,
-      lifeSpawnChance: 0.15,
-      coinSpawnChance: 0.15,
-      startLives: 3,
-      maxLives: 5,
-      spawnPadding: 2.25,
-      safeSpawnPadding: 3.1,
-    };
-  }
-
-  return {
-    compactTouch,
-    startTargetCount: 9,
-    minTargetsAfterScore: 10,
-    targetSpeed: 2,
-    playerSpeed: 5,
-    playerBoostSpeed: 10,
-    maxTargets: 20,
-    targetGrowthScoreStep: DEFAULT_TARGET_GROWTH_SCORE_STEP,
-    lifeSpawnChance: 0.15,
-    coinSpawnChance: 0.15,
-    startLives: 3,
-    maxLives: 5,
-    spawnPadding: 1.8,
-    safeSpawnPadding: 2.3,
-  };
-}
-
-function getGameplayProfileKey(profile: GameplayProfile): GameplayProfileKey {
-  return profile.compactTouch ? "compactTouch" : "desktop";
-}
-
-function getGameplaySettingsValues(profile: GameplayProfile): GameplaySettingsValues {
-  return {
-    targetSpeed: profile.targetSpeed,
-    playerSpeed: profile.playerSpeed,
-    playerBoostSpeed: profile.playerBoostSpeed,
-    maxTargets: profile.maxTargets,
-    targetGrowthScoreStep: profile.targetGrowthScoreStep,
-    lifeSpawnChancePercent: Math.round(profile.lifeSpawnChance * 100),
-    startLives: profile.startLives,
-    maxLives: profile.maxLives,
-  };
-}
 
 function getSettingsEntity(): SettingsEntity | null {
   for (const entity of game.queries.settings) {
@@ -428,48 +364,6 @@ function renderApp(): void {
   ui.render(getAppReadModel());
 }
 
-function getSavedOverridesForProfile(profileKey: GameplayProfileKey) {
-  const settingsEntity = getSettingsEntity();
-  return settingsEntity?.settingsState.saved[profileKey] ?? {};
-}
-
-function syncSettingsStateWithProfile(resetDraft = false): void {
-  const settingsEntity = getSettingsEntity();
-  if (!settingsEntity) return;
-
-  const defaultProfile = createGameplayProfile(game.canvasMetrics);
-  const activeProfileKey = getGameplayProfileKey(defaultProfile);
-  const defaults = getGameplaySettingsValues(defaultProfile);
-  const shouldReplaceDraft = resetDraft || settingsEntity.settingsState.activeProfileKey !== activeProfileKey;
-
-  settingsEntity.settingsState.activeProfileKey = activeProfileKey;
-  settingsEntity.settingsState.defaults = defaults;
-
-  if (shouldReplaceDraft) {
-    settingsEntity.settingsState.draft = applyGameplayOverrides(defaults, settingsEntity.settingsState.saved[activeProfileKey]);
-  }
-
-  notifySettingsStateListeners();
-}
-
-function resolveGameplayProfile(metrics: CanvasMetrics): GameplayProfile {
-  const baseProfile = createGameplayProfile(metrics);
-  const profileKey = getGameplayProfileKey(baseProfile);
-  const values = applyGameplayOverrides(getGameplaySettingsValues(baseProfile), getSavedOverridesForProfile(profileKey));
-
-  return {
-    ...baseProfile,
-    targetSpeed: values.targetSpeed,
-    playerSpeed: values.playerSpeed,
-    playerBoostSpeed: values.playerBoostSpeed,
-    maxTargets: values.maxTargets,
-    targetGrowthScoreStep: values.targetGrowthScoreStep,
-    lifeSpawnChance: values.lifeSpawnChancePercent / 100,
-    startLives: Math.min(values.startLives, values.maxLives),
-    maxLives: values.maxLives,
-  };
-}
-
 function getGameplayProfile(): GameplayProfile {
   return game.gameplayProfile;
 }
@@ -502,102 +396,17 @@ function trackGameplayEvent(type: AnalyticsEventType, payload: AnalyticsPayload 
 }
 
 function updateGameplayProfile(resetDraft = false): void {
-  syncSettingsStateWithProfile(resetDraft);
-  game.gameplayProfile = resolveGameplayProfile(game.canvasMetrics);
+  syncSettingsStateWithProfile(getSettingsEntity(), game.canvasMetrics, resetDraft);
+  game.gameplayProfile = resolveGameplayProfile(getSettingsEntity(), game.canvasMetrics);
 }
 
-function initializeSettingsState(savedSettings: SavedGameplaySettings): void {
-  const defaultProfile = createGameplayProfile(game.canvasMetrics);
-  const activeProfileKey = getGameplayProfileKey(defaultProfile);
-  const defaults = getGameplaySettingsValues(defaultProfile);
-  const draft = applyGameplayOverrides(defaults, savedSettings[activeProfileKey]);
-
-  game.ecsWorld.add({
-    id: SETTINGS_ENTITY_ID,
-    settingsState: {
-      activeProfileKey,
-      saved: {
-        compactTouch: savedSettings.compactTouch ?? createEmptySavedGameplaySettings().compactTouch,
-        desktop: savedSettings.desktop ?? createEmptySavedGameplaySettings().desktop,
-      },
-      draft,
-      defaults,
-    },
-  });
+function initializeSettingsState(): void {
+  game.ecsWorld.add(createSettingsEntityFromSavedSettings(game.canvasMetrics, loadSavedGameplaySettings()));
   notifySettingsStateListeners();
-}
-
-function getSettingsViewState(): SettingsViewState | null {
-  const settingsEntity = getSettingsEntity();
-  if (!settingsEntity) return null;
-
-  return {
-    activeProfileKey: settingsEntity.settingsState.activeProfileKey,
-    draft: settingsEntity.settingsState.draft,
-  };
-}
-
-function notifySettingsStateListeners(): void {
-  const state = getSettingsViewState();
-  if (!state) return;
-
-  for (const listener of settingsStateListeners) {
-    listener(state);
-  }
-}
-
-export function subscribeToSettingsState(listener: SettingsStateListener): () => void {
-  settingsStateListeners.add(listener);
-  const state = getSettingsViewState();
-  if (state) {
-    listener(state);
-  }
-
-  return () => {
-    settingsStateListeners.delete(listener);
-  };
 }
 
 export function setOpenSettingsListener(listener: OpenSettingsListener): void {
   openSettingsListener = listener;
-}
-
-export function updateSettingsDraft(field: keyof GameplaySettingsValues, value: number): void {
-  const settingsEntity = getSettingsEntity();
-  if (!settingsEntity) return;
-
-  settingsEntity.settingsState.draft[field] = clampGameplaySettingValue(value, field);
-
-  if (field === "startLives" && settingsEntity.settingsState.draft.startLives > settingsEntity.settingsState.draft.maxLives) {
-    settingsEntity.settingsState.draft.maxLives = settingsEntity.settingsState.draft.startLives;
-  }
-
-  if (field === "maxLives" && settingsEntity.settingsState.draft.startLives > settingsEntity.settingsState.draft.maxLives) {
-    settingsEntity.settingsState.draft.startLives = settingsEntity.settingsState.draft.maxLives;
-  }
-
-  notifySettingsStateListeners();
-}
-
-export function resetSettingsDraftToDefaults(): void {
-  const settingsEntity = getSettingsEntity();
-  if (!settingsEntity) return;
-
-  settingsEntity.settingsState.draft = {
-    ...settingsEntity.settingsState.defaults,
-  };
-  notifySettingsStateListeners();
-}
-
-export function persistActiveProfileSettings(): void {
-  const settingsEntity = getSettingsEntity();
-  if (!settingsEntity) return;
-
-  const { activeProfileKey, defaults, draft, saved } = settingsEntity.settingsState;
-  saved[activeProfileKey] = createPersistableOverrides(draft, defaults);
-  saveGameplaySettings(saved);
-  updateGameplayProfile(true);
-  shouldRestartGameOnNextGameRoute = true;
 }
 
 function setDirectionalInput(inputKey: InputKey, isPressed: boolean): void {
@@ -2246,9 +2055,16 @@ function togglePauseGame(): void {
     canvasRenderer = createCanvasRenderer({ context: ctx, scale: SCALE });
     ui = dependencies.ui;
     rootStyle = dependencies.rootStyle;
+    configureSettingsController({
+      getSettingsEntity,
+      onPersistActiveProfileSettings() {
+        updateGameplayProfile(true);
+        shouldRestartGameOnNextGameRoute = true;
+      },
+    });
     installDomBindings();
     resizeCanvas();
-    initializeSettingsState(loadSavedGameplaySettings());
+    initializeSettingsState();
     updateGameplayProfile(true);
     game.bestScore = loadBestScore();
     pwa.initialize();

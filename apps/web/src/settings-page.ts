@@ -1,10 +1,12 @@
-import type { GameplayProfileKey, GameplaySettingsValues } from "./gameplay-settings.ts";
+import type { AppReadModel } from "./app-read-model.ts";
+import type { GameplaySettingsValues } from "./gameplay-settings.ts";
 
-type SettingsPageOptions = {
-  onValueChange: (field: keyof GameplaySettingsValues, value: number) => void;
-  onReset: () => void;
-  onSave: () => void;
-};
+export type SettingsPageEvent =
+  | { type: "settings-change"; field: keyof GameplaySettingsValues; value: number }
+  | { type: "settings-reset" }
+  | { type: "settings-save" };
+
+type SettingsPageListener = (event: SettingsPageEvent) => void;
 
 type SliderRefs = {
   input: HTMLInputElement;
@@ -31,14 +33,21 @@ const sliderDefinitions: Array<{
 
 export type SettingsPageController = {
   element: HTMLDivElement;
-  render: (state: { activeProfileKey: GameplayProfileKey; draft: GameplaySettingsValues }) => void;
-  setVisible: (visible: boolean) => void;
+  render: (model: AppReadModel) => void;
+  subscribe: (listener: SettingsPageListener) => () => void;
 };
 
-export function createSettingsPage(options: SettingsPageOptions): SettingsPageController {
+export function createSettingsPage(): SettingsPageController {
   const root = document.createElement("div");
   root.className = "settings-page";
   root.hidden = true;
+  const listeners = new Set<SettingsPageListener>();
+
+  function emit(event: SettingsPageEvent): void {
+    for (const listener of listeners) {
+      listener(event);
+    }
+  }
 
   const panel = document.createElement("section");
   panel.className = "settings-card";
@@ -82,7 +91,7 @@ export function createSettingsPage(options: SettingsPageOptions): SettingsPageCo
     input.max = String(sliderDefinition.max);
     input.step = String(sliderDefinition.step);
     input.addEventListener("input", () => {
-      options.onValueChange(sliderDefinition.field, Number(input.value));
+      emit({ type: "settings-change", field: sliderDefinition.field, value: Number(input.value) });
     });
 
     row.append(labelRow, input);
@@ -97,21 +106,30 @@ export function createSettingsPage(options: SettingsPageOptions): SettingsPageCo
   resetButton.type = "button";
   resetButton.className = "settings-button secondary";
   resetButton.textContent = "Дефолтные значения";
-  resetButton.addEventListener("click", options.onReset);
+  resetButton.addEventListener("click", () => {
+    emit({ type: "settings-reset" });
+  });
 
   const saveButton = document.createElement("button");
   saveButton.type = "button";
   saveButton.className = "settings-button";
   saveButton.textContent = "Сохранить и начать игру";
-  saveButton.addEventListener("click", options.onSave);
+  saveButton.addEventListener("click", () => {
+    emit({ type: "settings-save" });
+  });
 
   actions.append(resetButton, saveButton);
   panel.append(actions);
 
   return {
     element: root,
-    render(state) {
-      subtitle.textContent = state.activeProfileKey === "compactTouch"
+    render(model) {
+      root.hidden = !model.shell.settingsPageVisible;
+
+      const settings = model.game.settings;
+      if (!settings) return;
+
+      subtitle.textContent = settings.activeProfileKey === "compactTouch"
         ? "Редактируется активный мобильный профиль."
         : "Редактируется активный десктопный профиль.";
 
@@ -119,15 +137,18 @@ export function createSettingsPage(options: SettingsPageOptions): SettingsPageCo
         const refs = sliderRefs.get(sliderDefinition.field);
         if (!refs) continue;
 
-        const value = state.draft[sliderDefinition.field];
+        const value = settings.draft[sliderDefinition.field];
         refs.input.value = String(value);
         refs.value.textContent = sliderDefinition.formatValue
           ? sliderDefinition.formatValue(value)
           : String(value);
       }
     },
-    setVisible(visible) {
-      root.hidden = !visible;
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
   };
 }
