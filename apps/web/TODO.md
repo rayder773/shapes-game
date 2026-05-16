@@ -306,6 +306,34 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### 1. Runtime Foundation
+
+- Добавлен `src/game-runtime.ts` как внутренний runtime foundation module.
+- Из `game.ts` вынесены внутренние типы и factory helpers:
+  - entity/resource/runtime types;
+  - ECS query set;
+  - canvas metrics/input/queue factories;
+  - `createRuntime(dependencies)`.
+- `createRuntime(...)` получает явные dependencies:
+  - `createGameplayProfile(metrics)`;
+  - `startRound()`;
+  - `now()`.
+- `game.ts` по-прежнему владеет поведением игры:
+  - systems;
+  - physics adapter implementation;
+  - read-model builder;
+  - DOM/lifecycle bindings;
+  - analytics/PWA/settings integration.
+- Добавлен `test/game-runtime.spec.ts`, фиксирующий:
+  - default boot runtime state;
+  - связь ECS world и queries;
+  - отсутствие shared mutable state между runtime instances.
+- Публичные `GameReadModel`, `AppReadModel`, DOM/canvas adapter APIs и gameplay behavior не менялись.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
 ### 1. Разделить Game Runtime

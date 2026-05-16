@@ -1,4 +1,3 @@
-import { World as ECSWorld, type Query, type With } from "miniplex";
 import {
   Box,
   Circle,
@@ -30,7 +29,6 @@ import {
   createPwaController,
   subscribeToPwaStateChanges,
   type PwaActionResult,
-  type PwaInlineInstallPrompt,
   type PwaInstallOverlayModel,
 } from "./pwa.ts";
 import {
@@ -55,256 +53,34 @@ import type {
   GameReadModelSettings,
 } from "./game-read-model.ts";
 import type { AppReadModel } from "./app-read-model.ts";
-
-type Shape = "circle" | "square" | "triangle";
-type ColorName = "red" | "blue" | "green";
-type FillStyleName = "filled" | "outline" | "dashed";
-type InputKey = "up" | "down" | "left" | "right";
-type PhysicsBodyKind = "entity" | "wall";
-type GameState = "boot" | "playing" | "paused" | "gameOver";
-type OverlayMode = "install" | "onboarding" | "pause" | "gameOver" | null;
-
-type EntityId = number;
-type PhysicsBodyId = number;
-
-type Transform = {
-  x: number;
-  y: number;
-  angle: number;
-};
-
-type Appearance = {
-  shape: Shape;
-  color: ColorName;
-  fillStyle: FillStyleName;
-  size: number;
-};
-
-type PhysicsComponent = {
-  bodyId: PhysicsBodyId;
-  radius: number;
-};
-
-type MovementDirection = {
-  x: number;
-  y: number;
-};
-
-type GameplaySettingsState = {
-  activeProfileKey: GameplayProfileKey;
-  saved: SavedGameplaySettings;
-  draft: GameplaySettingsValues;
-  defaults: GameplaySettingsValues;
-};
-
-type GameEntity = {
-  id: EntityId;
-  transform?: Transform;
-  appearance?: Appearance;
-  physics?: PhysicsComponent;
-  movementDirection?: MovementDirection;
-  renderable?: true;
-  player?: true;
-  target?: true;
-  lifePickup?: true;
-  coinPickup?: true;
-  settingsState?: GameplaySettingsState;
-};
-
-type InputSnapshot = Record<InputKey, boolean>;
-
-type CanvasMetrics = {
-  dpr: number;
-  widthCss: number;
-  heightCss: number;
-  widthPx: number;
-  heightPx: number;
-};
-
-type GameplayProfile = {
-  compactTouch: boolean;
-  startTargetCount: number;
-  minTargetsAfterScore: number;
-  targetSpeed: number;
-  playerSpeed: number;
-  playerBoostSpeed: number;
-  maxTargets: number;
-  targetGrowthScoreStep: number;
-  lifeSpawnChance: number;
-  coinSpawnChance: number;
-  startLives: number;
-  maxLives: number;
-  spawnPadding: number;
-  safeSpawnPadding: number;
-};
-
-type PhysicsCommand = {
-  type: "set-velocity";
-  bodyId: PhysicsBodyId;
-  velocity: Vec2Value;
-};
-
-type GameplayCommand =
-  | {
-      type: "consume-target";
-      playerId: EntityId;
-      targetId: EntityId;
-    }
-  | {
-      type: "lose-life";
-      playerId: EntityId;
-      targetId: EntityId;
-    }
-  | {
-      type: "collect-life";
-      playerId: EntityId;
-      lifeId: EntityId;
-    }
-  | {
-      type: "collect-coin";
-      playerId: EntityId;
-      coinId: EntityId;
-    }
-  | {
-      type: "game-over";
-    };
-
-type SpawnRequest =
-  | {
-      type: "spawn-target";
-      safeForPlayer: boolean;
-      safeAppearance?: Appearance;
-    }
-  | {
-      type: "spawn-life";
-    }
-  | {
-      type: "spawn-coin";
-    };
-
-type CollisionEvent =
-  | {
-      type: "player-target";
-      playerId: EntityId;
-      targetId: EntityId;
-    }
-  | {
-      type: "player-life";
-      playerId: EntityId;
-      lifeId: EntityId;
-    }
-  | {
-      type: "player-coin";
-      playerId: EntityId;
-      coinId: EntityId;
-    };
-
-type QueueState = {
-  physics: PhysicsCommand[];
-  gameplay: GameplayCommand[];
-  spawns: SpawnRequest[];
-  collisionEvents: CollisionEvent[];
-};
-
-type PlayerEntity = With<GameEntity, "player" | "transform" | "appearance" | "physics" | "movementDirection">;
-type TargetEntity = With<GameEntity, "target" | "transform" | "appearance" | "physics" | "movementDirection">;
-type LifePickupEntity = With<GameEntity, "lifePickup" | "transform" | "appearance" | "physics" | "movementDirection">;
-type CoinPickupEntity = With<GameEntity, "coinPickup" | "transform" | "appearance" | "physics" | "movementDirection">;
-type PhysicsEntity = With<GameEntity, "transform" | "physics" | "movementDirection">;
-type RenderableEntity = With<GameEntity, "transform" | "appearance" | "renderable">;
-type ReadModelSourceEntity = With<GameEntity, "transform" | "appearance">;
-type AppearancePhysicsEntity = With<GameEntity, "appearance" | "physics" | "movementDirection">;
-type InteractiveEntity = With<GameEntity, "transform" | "appearance" | "physics" | "movementDirection">;
-type SettingsEntity = With<GameEntity, "settingsState">;
-
-type QuerySet = {
-  players: Query<PlayerEntity>;
-  targets: Query<TargetEntity>;
-  lifePickups: Query<LifePickupEntity>;
-  coinPickups: Query<CoinPickupEntity>;
-  physicsBodies: Query<PhysicsEntity>;
-  renderables: Query<RenderableEntity>;
-  settings: Query<SettingsEntity>;
-};
-
-type PlanckBodyUserData = {
-  bodyId: PhysicsBodyId;
-  kind: PhysicsBodyKind;
-  entityId?: EntityId;
-};
-
-type PhysicsBodySnapshot = {
-  bodyId: PhysicsBodyId;
-  radius: number;
-  x: number;
-  y: number;
-};
-
-type Bounds = {
-  width: number;
-  height: number;
-};
-
-type DynamicBodySpec = {
-  entityId: EntityId;
-  position: Vec2Value;
-  angle: number;
-  linearDamping: number;
-  angularDamping: number;
-  bullet: boolean;
-  shape: Shape;
-  size: number;
-  velocity: Vec2Value;
-  angularVelocity: number;
-};
-
-type ContactPassThroughPredicate = (bodyIdA: PhysicsBodyId, bodyIdB: PhysicsBodyId) => boolean;
-
-type PhysicsAdapter = {
-  createWorld(bounds: Bounds): void;
-  destroyWorld(): void;
-  createDynamicBody(spec: DynamicBodySpec): PhysicsBodyId;
-  destroyBody(bodyId: PhysicsBodyId): void;
-  setShape(bodyId: PhysicsBodyId, shapeSpec: { shape: Shape; size: number }): void;
-  setVelocity(bodyId: PhysicsBodyId, velocity: Vec2Value): void;
-  getVelocity(bodyId: PhysicsBodyId): Vec2Value | null;
-  setSpeedAlongDirection(bodyId: PhysicsBodyId, direction: Vec2Value, speed: number): void;
-  setContactPassThroughPredicate(predicate: ContactPassThroughPredicate | null): void;
-  step(dt: number): void;
-  readTransform(bodyId: PhysicsBodyId): Transform | null;
-  resizeBounds(bounds: Bounds, dynamicBodies: PhysicsBodySnapshot[]): void;
-  drainCollisionEvents(): Array<{ bodyIdA: PhysicsBodyId; bodyIdB: PhysicsBodyId }>;
-};
-
-type Runtime = {
-  state: GameState;
-  score: number;
-  coins: number;
-  bestScore: number | null;
-  lastGameOverWasNewBest: boolean;
-  previousBestScoreBeforeGameOver: number | null;
-  lastRoundBaseScore: number;
-  lastRoundCoinBonus: number;
-  lastRoundFinalScore: number;
-  lastRoundBestScore: number | null;
-  gameOverInstallPrompt: PwaInlineInstallPrompt | null;
-  nextEntityId: number;
-  accumulator: number;
-  lastFrameTime: number;
-  ecsWorld: ECSWorld<GameEntity>;
-  queries: QuerySet;
-  physicsAdapter: PhysicsAdapter | null;
-  input: InputSnapshot;
-  canvasMetrics: CanvasMetrics;
-  gameplayProfile: GameplayProfile;
-  queues: QueueState;
-  playerBoostExpiresAt: number;
-  lives: number;
-  maxLives: number;
-  damageInvulnerabilityExpiresAt: number;
-  roundId: string;
-  roundStartedAt: number;
-};
+import {
+  createQueues,
+  createRuntime,
+  type Appearance,
+  type AppearancePhysicsEntity,
+  type Bounds,
+  type CanvasMetrics,
+  type ColorName,
+  type ContactPassThroughPredicate,
+  type EntityId,
+  type FillStyleName,
+  type GameEntity,
+  type GameplayProfile,
+  type InputKey,
+  type InteractiveEntity,
+  type MovementDirection,
+  type OverlayMode,
+  type PhysicsAdapter,
+  type PhysicsBodyId,
+  type PhysicsBodyKind,
+  type PhysicsCommand,
+  type PhysicsEntity,
+  type PlanckBodyUserData,
+  type PlayerEntity,
+  type ReadModelSourceEntity,
+  type SettingsEntity,
+  type Shape,
+} from "./game-runtime.ts";
 
 type FullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -368,7 +144,11 @@ let rootStyle: CSSStyleDeclaration;
 const settingsStateListeners = new Set<SettingsStateListener>();
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
-const game = createRuntime();
+const game = createRuntime({
+  createGameplayProfile,
+  startRound: startAnalyticsRound,
+  now: () => performance.now(),
+});
 let overlayMode: OverlayMode = null;
 let shouldRetryFullscreen = true;
 let hasStartedFrameLoop = false;
@@ -377,62 +157,6 @@ let hasInstalledDomBindings = false;
 let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
 let lastPauseWasAutoPaused = false;
-
-function createRuntime(): Runtime {
-  const ecsWorld = new ECSWorld<GameEntity>();
-  const canvasMetrics = createCanvasMetrics();
-
-  return {
-    state: "boot",
-    score: 0,
-    coins: 0,
-    bestScore: null,
-    lastGameOverWasNewBest: false,
-    previousBestScoreBeforeGameOver: null,
-    lastRoundBaseScore: 0,
-    lastRoundCoinBonus: 0,
-    lastRoundFinalScore: 0,
-    lastRoundBestScore: null,
-    gameOverInstallPrompt: null,
-    nextEntityId: 1,
-    accumulator: 0,
-    lastFrameTime: 0,
-    ecsWorld,
-    queries: createQueries(ecsWorld),
-    physicsAdapter: null,
-    input: createInputSnapshot(),
-    canvasMetrics,
-    gameplayProfile: createGameplayProfile(canvasMetrics),
-    queues: createQueues(),
-    playerBoostExpiresAt: 0,
-    lives: 3,
-    maxLives: 5,
-    damageInvulnerabilityExpiresAt: 0,
-    roundId: startAnalyticsRound(),
-    roundStartedAt: performance.now(),
-  };
-}
-
-function createQueries(ecsWorld: ECSWorld<GameEntity>): QuerySet {
-  return {
-    players: ecsWorld.with("player", "transform", "appearance", "physics", "movementDirection"),
-    targets: ecsWorld.with("target", "transform", "appearance", "physics", "movementDirection"),
-    lifePickups: ecsWorld.with("lifePickup", "transform", "appearance", "physics", "movementDirection"),
-    coinPickups: ecsWorld.with("coinPickup", "transform", "appearance", "physics", "movementDirection"),
-    physicsBodies: ecsWorld.with("transform", "physics", "movementDirection"),
-    renderables: ecsWorld.with("transform", "appearance", "renderable"),
-    settings: ecsWorld.with("settingsState"),
-  };
-}
-
-function createInputSnapshot(): InputSnapshot {
-  return {
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  };
-}
 
 function createGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
   const compactTouch = isPhoneDevice();
@@ -881,25 +605,6 @@ function setDirectionalInput(inputKey: InputKey, isPressed: boolean): void {
 }
 
 function clearActiveTouchInputs(): void {
-}
-
-function createCanvasMetrics(): CanvasMetrics {
-  return {
-    dpr: 1,
-    widthCss: 0,
-    heightCss: 0,
-    widthPx: 0,
-    heightPx: 0,
-  };
-}
-
-function createQueues(): QueueState {
-  return {
-    physics: [],
-    gameplay: [],
-    spawns: [],
-    collisionEvents: [],
-  };
 }
 
 function getViewportSize(): { width: number; height: number } {
