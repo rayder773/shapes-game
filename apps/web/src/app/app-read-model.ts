@@ -1,5 +1,5 @@
-import type { AppRoute } from "./router.ts";
-import type { GameReadModel } from "./game-read-model.ts";
+import type { AppRoute } from "../platform/router.ts";
+import type { GameReadModel } from "../game/game-read-model.ts";
 
 export type AppReadModelShell = {
   gamePageVisible: boolean;

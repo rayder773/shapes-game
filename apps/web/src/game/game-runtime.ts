@@ -5,7 +5,7 @@ import type {
   GameplaySettingsValues,
   SavedGameplaySettings,
 } from "./gameplay-settings.ts";
-import type { PwaInlineInstallPrompt } from "./pwa.ts";
+import type { PwaInlineInstallPrompt } from "../platform/pwa.ts";
 
 export type Shape = "circle" | "square" | "triangle";
 export type ColorName = "red" | "blue" | "green";

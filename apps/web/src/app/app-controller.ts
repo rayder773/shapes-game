@@ -5,21 +5,21 @@ import {
   enterSettingsPage,
   getAppReadModel,
   setOpenSettingsListener,
-} from "./game.ts";
+} from "../game/game.ts";
 import {
   getCurrentRoute,
   initializeRouter,
   navigateToRoute,
   subscribeToRouteChanges,
   type AppRoute,
-} from "./router.ts";
+} from "../platform/router.ts";
 import {
   persistActiveProfileSettings,
   resetSettingsDraftToDefaults,
   subscribeToSettingsState,
   updateSettingsDraft,
-} from "./settings-controller.ts";
-import type { SettingsPageController } from "./settings-page.ts";
+} from "../settings/settings-controller.ts";
+import type { SettingsPageController } from "../settings/settings-page.ts";
 
 type AppControllerDependencies = {
   appUi: DomAppUi;

@@ -15,12 +15,11 @@ import {
   loadSavedGameplaySettings,
 } from "./gameplay-settings.ts";
 import {
-  createPwaOverlayViewModel,
   createPwaController,
   subscribeToPwaStateChanges,
   type PwaActionResult,
   type PwaInstallOverlayModel,
-} from "./pwa.ts";
+} from "../platform/pwa.ts";
 import {
   createCanvasRenderer,
   type CanvasRenderer,
@@ -33,16 +32,21 @@ import {
   trackAnalyticsEvent,
   type AnalyticsEventType,
   type AnalyticsPayload,
-} from "./analytics-client.ts";
-import { getCurrentRoute } from "./router.ts";
+} from "../platform/analytics-client.ts";
+import { getCurrentRoute } from "../platform/router.ts";
 import type {
   GameReadModel,
   GameReadModelEntity,
-  GameReadModelEntityKind,
-  GameReadModelOverlayView,
   GameReadModelSettings,
 } from "./game-read-model.ts";
-import type { AppReadModel } from "./app-read-model.ts";
+import type { AppReadModel } from "../app/app-read-model.ts";
+import { buildAppReadModel } from "../app/app-read-model-builder.ts";
+import {
+  buildGameReadModel,
+  buildSettingsReadModel,
+  collectEntityReadModels,
+  createEntityReadModel,
+} from "./game-read-model-builder.ts";
 import {
   createGameplayProfile,
   createSettingsEntityFromSavedSettings,
@@ -53,7 +57,7 @@ import {
 import {
   configureSettingsController,
   notifySettingsStateListeners,
-} from "./settings-controller.ts";
+} from "../settings/settings-controller.ts";
 import {
   createQueues,
   createRuntime,
@@ -78,7 +82,6 @@ import {
   type PhysicsEntity,
   type PlanckBodyUserData,
   type PlayerEntity,
-  type ReadModelSourceEntity,
   type SettingsEntity,
   type Shape,
 } from "./game-runtime.ts";
@@ -159,51 +162,8 @@ function getSettingsEntity(): SettingsEntity | null {
   return null;
 }
 
-function cloneReadModelValue<T>(value: T): T {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function getEntityReadModelKind(entity: ReadModelSourceEntity): GameReadModelEntityKind {
-  if (entity.player) return "player";
-  if (entity.target) return "target";
-  if (entity.lifePickup) return "lifePickup";
-  if (entity.coinPickup) return "coinPickup";
-
-  throw new Error(`Unsupported read model entity ${entity.id}`);
-}
-
-function createEntityReadModel(entity: ReadModelSourceEntity): GameReadModelEntity {
-  const model: GameReadModelEntity = {
-    id: entity.id,
-    kind: getEntityReadModelKind(entity),
-    position: {
-      x: entity.transform.x,
-      y: entity.transform.y,
-    },
-    rotation: entity.transform.angle,
-    appearance: cloneReadModelValue(entity.appearance),
-    ...(entity.movementDirection ? { movementDirection: cloneReadModelValue(entity.movementDirection) } : {}),
-    ...(entity.physics ? { collisionRadius: entity.physics.radius } : {}),
-  };
-
-  return model;
-}
-
-function collectEntityReadModels(items: Iterable<unknown>): GameReadModelEntity[] {
-  return [...items].map((entity) => createEntityReadModel(entity as ReadModelSourceEntity));
-}
-
-function getSceneEntityReadModels(): GameReadModelEntity[] {
-  return collectEntityReadModels(game.queries.renderables).sort((left, right) => left.id - right.id);
-}
-
 export function getSettingsReadModel(): GameReadModelSettings | null {
-  const settingsEntity = getSettingsEntity();
-  return settingsEntity ? cloneReadModelValue(settingsEntity.settingsState) : null;
+  return buildSettingsReadModel(getSettingsEntity());
 }
 
 export function getPlayerModel(): GameReadModelEntity | null {
@@ -225,139 +185,21 @@ export function getCoinPickupModels(): GameReadModelEntity[] {
 
 export function getAppReadModel(): AppReadModel {
   const route = getCurrentRoute();
-  return {
-    route,
-    game: getGameReadModel(),
-    shell: {
-      gamePageVisible: route === "game",
-      settingsPageVisible: route === "settings",
-      adminPageVisible: route === "admin",
-    },
-  };
-}
-
-function createInstallOverlayView(): GameReadModelOverlayView | null {
-  const activeOverlay = pwa.getActiveOverlayModel();
-  if (!activeOverlay) return null;
-
-  const pwaView = createPwaOverlayViewModel(activeOverlay);
-  return {
-    layout: pwaView.layout,
-    variant: pwaView.variant,
-    title: pwaView.title,
-    message: pwaView.message,
-    tips: pwaView.tips,
-    buttons: [
-      { label: pwaView.primaryLabel, action: "confirmInstall" },
-      ...(pwaView.secondaryLabel ? [{ label: pwaView.secondaryLabel, action: "dismissInstall" } as const] : []),
-    ],
-    installButton: null,
-    footerPrompt: null,
-    results: null,
-  };
-}
-
-function createOverlayView(): GameReadModelOverlayView | null {
-  if (overlayMode === "onboarding") {
-    return {
-      layout: "modal",
-      variant: "default",
-      title: "Правила",
-      message: "",
-      tips: GAME_RULES,
-      buttons: [{ label: "Понятно", action: "acceptOnboarding" }],
-      installButton: null,
-      footerPrompt: null,
-      results: null,
-    };
-  }
-
-  if (overlayMode === "pause") {
-    const installButtonState = pwa.getPauseInstallButtonState();
-    return {
-      layout: "modal",
-      variant: "default",
-      title: "Пауза",
-      message: lastPauseWasAutoPaused ? "Игра остановлена." : "",
-      tips: GAME_RULES,
-      buttons: [
-        { label: "Продолжить", action: "resume" },
-        { label: "Настройки", action: "openSettings" },
-        { label: "Начать заново", action: "restart" },
-      ],
-      installButton: installButtonState.visible ? { label: installButtonState.label, surface: "pause" } : null,
-      footerPrompt: null,
-      results: null,
-    };
-  }
-
-  if (overlayMode === "gameOver") {
-    const bestScore = game.lastRoundBestScore ?? game.lastRoundFinalScore;
-    return {
-      layout: "modal",
-      variant: game.lastGameOverWasNewBest ? "results-record" : "results",
-      title: "Результаты",
-      message: "",
-      tips: [],
-      buttons: [{ label: "Начать заново", action: "restart" }],
-      installButton: null,
-      footerPrompt: game.gameOverInstallPrompt
-        ? {
-            message: game.gameOverInstallPrompt.message,
-            button: {
-              label: game.gameOverInstallPrompt.buttonLabel,
-              action: "confirmInstall",
-            },
-          }
-        : null,
-      results: {
-        baseScore: game.lastRoundBaseScore,
-        coins: game.coins,
-        coinBonus: game.lastRoundCoinBonus,
-        finalScore: game.lastRoundFinalScore,
-        bestScore,
-        wasNewBest: game.lastGameOverWasNewBest,
-      },
-    };
-  }
-
-  if (overlayMode === "install") {
-    return createInstallOverlayView();
-  }
-
-  return null;
+  return buildAppReadModel(route, getGameReadModel());
 }
 
 export function getGameReadModel(): GameReadModel {
-  const entities = getSceneEntityReadModels();
-
-  return {
-    state: game.state,
-    hud: {
-      score: game.score,
-      coins: game.coins,
-      lives: game.lives,
-      maxLives: game.maxLives,
-      bestScore: game.bestScore,
-    },
+  return buildGameReadModel({
+    runtime: game,
+    settings: getSettingsReadModel(),
     overlay: {
       mode: overlayMode,
-      view: createOverlayView(),
+      rules: GAME_RULES,
+      lastPauseWasAutoPaused,
+      activeInstallOverlay: pwa.getActiveOverlayModel(),
+      pauseInstallButton: pwa.getPauseInstallButtonState(),
     },
-    scene: {
-      entities,
-    },
-    roundResult: {
-      baseScore: game.lastRoundBaseScore,
-      coinBonus: game.lastRoundCoinBonus,
-      finalScore: game.lastRoundFinalScore,
-      bestScore: game.lastRoundBestScore,
-      wasNewBest: game.lastGameOverWasNewBest,
-    },
-    gameplayProfile: cloneReadModelValue(game.gameplayProfile),
-    input: cloneReadModelValue(game.input),
-    settings: getSettingsReadModel(),
-  };
+  });
 }
 
 function renderApp(): void {

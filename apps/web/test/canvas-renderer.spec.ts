@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { createCanvasRenderer } from "../src/canvas-renderer.ts";
-import type { GameReadModelEntity } from "../src/game-read-model.ts";
+import { createCanvasRenderer } from "../src/game/canvas-renderer.ts";
+import type { GameReadModelEntity } from "../src/game/game-read-model.ts";
 
 type CanvasCall = {
   method: string;

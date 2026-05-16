@@ -1,7 +1,7 @@
-import type { AdminPageController } from "./admin/admin-page.ts";
+import type { AdminPageController } from "../admin/admin-page.ts";
 import type { AppReadModel } from "./app-read-model.ts";
-import type { DomGameUi } from "./dom-game-ui.ts";
-import type { SettingsPageController } from "./settings-page.ts";
+import type { DomGameUi } from "../game/dom-game-ui.ts";
+import type { SettingsPageController } from "../settings/settings-page.ts";
 
 type DomAppUiDependencies = {
   gameUi: DomGameUi;

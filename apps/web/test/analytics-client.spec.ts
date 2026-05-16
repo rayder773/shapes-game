@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { AnalyticsClient, type AnalyticsEvent } from "../src/analytics-client.ts";
+import { AnalyticsClient, type AnalyticsEvent } from "../src/platform/analytics-client.ts";
 
 const ENDPOINT = "https://analytics.example.test/analytics/events";
 

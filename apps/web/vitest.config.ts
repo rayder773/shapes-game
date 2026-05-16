@@ -5,7 +5,7 @@ function antiMatchTestHookPlugin() {
     name: "anti-match-test-hook",
     enforce: "post" as const,
     transform(code: string, id: string) {
-      if (!id.endsWith("/src/game.ts")) {
+      if (!id.endsWith("/src/game/game.ts")) {
         return null;
       }
 

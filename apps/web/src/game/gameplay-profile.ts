@@ -1,4 +1,4 @@
-import { isPhoneDevice } from "./device.ts";
+import { isPhoneDevice } from "../platform/device.ts";
 import {
   applyGameplayOverrides,
   createEmptySavedGameplaySettings,
@@ -12,7 +12,7 @@ import type {
   GameplayProfile,
   SettingsEntity,
 } from "./game-runtime.ts";
-import { notifySettingsStateListeners } from "./settings-controller.ts";
+import { notifySettingsStateListeners } from "../settings/settings-controller.ts";
 
 const SETTINGS_ENTITY_ID = 0;
 

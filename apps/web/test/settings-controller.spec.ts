@@ -5,8 +5,8 @@ import {
   resetSettingsDraftToDefaults,
   subscribeToSettingsState,
   updateSettingsDraft,
-} from "../src/settings-controller.ts";
-import type { SettingsEntity } from "../src/game-runtime.ts";
+} from "../src/settings/settings-controller.ts";
+import type { SettingsEntity } from "../src/game/game-runtime.ts";
 
 function createSettingsEntity(): SettingsEntity {
   return {

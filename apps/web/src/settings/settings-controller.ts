@@ -3,8 +3,8 @@ import {
   createPersistableOverrides,
   saveGameplaySettings,
   type GameplaySettingsValues,
-} from "./gameplay-settings.ts";
-import type { SettingsEntity } from "./game-runtime.ts";
+} from "../game/gameplay-settings.ts";
+import type { SettingsEntity } from "../game/game-runtime.ts";
 
 export type SettingsViewState = {
   activeProfileKey: SettingsEntity["settingsState"]["activeProfileKey"];

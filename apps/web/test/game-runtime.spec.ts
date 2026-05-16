@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createRuntime, type CanvasMetrics, type GameplayProfile } from "../src/game-runtime";
+import { createRuntime, type CanvasMetrics, type GameplayProfile } from "../src/game/game-runtime";
 
 function createTestGameplayProfile(_metrics: CanvasMetrics): GameplayProfile {
   return {

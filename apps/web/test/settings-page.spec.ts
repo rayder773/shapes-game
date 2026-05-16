@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import type { AppReadModel } from "../src/app-read-model.ts";
-import type { GameReadModel } from "../src/game-read-model.ts";
-import { createSettingsPage, type SettingsPageEvent } from "../src/settings-page.ts";
+import type { AppReadModel } from "../src/app/app-read-model.ts";
+import type { GameReadModel } from "../src/game/game-read-model.ts";
+import { createSettingsPage, type SettingsPageEvent } from "../src/settings/settings-page.ts";
 
 function createGameplayProfile(): GameReadModel["gameplayProfile"] {
   return {

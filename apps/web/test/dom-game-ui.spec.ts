@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import type { AppReadModel } from "../src/app-read-model.ts";
-import { createDomGameUi, type DomGameUiEvent } from "../src/dom-game-ui.ts";
-import type { GameReadModel, GameReadModelOverlayView } from "../src/game-read-model.ts";
+import type { AppReadModel } from "../src/app/app-read-model.ts";
+import { createDomGameUi, type DomGameUiEvent } from "../src/game/dom-game-ui.ts";
+import type { GameReadModel, GameReadModelOverlayView } from "../src/game/game-read-model.ts";
 
 const indexHtml = readFileSync(join(process.cwd(), "index.html"), "utf8");
 const bodyMarkupMatch = indexHtml.match(/<body>([\s\S]*)<\/body>/);

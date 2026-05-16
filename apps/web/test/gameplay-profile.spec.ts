@@ -4,8 +4,8 @@ import {
   createSettingsEntityFromSavedSettings,
   resolveGameplayProfile,
   syncSettingsStateWithProfile,
-} from "../src/gameplay-profile.ts";
-import type { CanvasMetrics, SettingsEntity } from "../src/game-runtime.ts";
+} from "../src/game/gameplay-profile.ts";
+import type { CanvasMetrics, SettingsEntity } from "../src/game/game-runtime.ts";
 
 const metrics: CanvasMetrics = {
   dpr: 1,

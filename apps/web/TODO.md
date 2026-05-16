@@ -412,6 +412,52 @@ DSL должен быть render adapter-ом, а не фундаментом п
   - `npm run lint --workspace web` проходит;
   - `npm run build --workspace web` проходит.
 
+### 1. Вынести Read Model Builder Boundary
+
+- Добавлен `src/game-read-model-builder.ts` как отдельный builder для публичной модели игры.
+- Из `game.ts` вынесены:
+  - mapping ECS/runtime entity в stable `GameReadModelEntity`;
+  - сортировка `scene.entities`;
+  - clone helper для публичных model values;
+  - сборка `hud`, `roundResult`, `gameplayProfile`, `input`, `settings`;
+  - сборка overlay view для onboarding, pause, gameOver и install.
+- Добавлен `src/app-read-model-builder.ts` для app-level shell visibility по route.
+- `game.ts` сохранен как compatibility facade:
+  - `getGameReadModel()`;
+  - `getAppReadModel()`;
+  - `getSettingsReadModel()`;
+  - `getPlayerModel()`;
+  - `getTargetModels()`;
+  - `getLifePickupModels()`;
+  - `getCoinPickupModels()`.
+- Добавлен `test/read-model-builder.spec.ts`, который проверяет builder на pure fixtures без запуска `main.ts`, DOM и gameplay loop.
+- Публичный `GameReadModel`, `AppReadModel`, DOM/canvas adapter APIs и gameplay behavior не менялись.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npx tsc --noEmit` в `apps/web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
+### 1. Упростить Навигацию По Архитектуре
+
+- Файлы в `src/` сгруппированы по ролям:
+  - `src/app/` — app controller, app read model, app-level DOM UI;
+  - `src/game/` — gameplay runtime, game read model, game UI, canvas renderer, gameplay profile/settings;
+  - `src/settings/` — settings controller и settings page adapter;
+  - `src/platform/` — router, PWA, analytics, device detection.
+- `main.ts`, `icons.ts`, `admin/` и `vite-env.d.ts` оставлены на верхнем уровне/в текущих местах, потому что это entrypoint, shared utility, отдельная feature-папка и environment types.
+- Добавлен `ARCHITECTURE.md` с короткой картой ролей:
+  - controller;
+  - builder;
+  - UI adapter;
+  - runtime;
+  - platform.
+- Поведение игры и публичные model contracts не менялись.
+- Проверки после инкремента:
+  - `npm run test --workspace web` проходит;
+  - `npm run lint --workspace web` проходит;
+  - `npm run build --workspace web` проходит.
+
 ## Следующие Шаги
 
 ### 1. Разделить Game Runtime

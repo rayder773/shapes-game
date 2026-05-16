@@ -1,6 +1,6 @@
-import type { AppReadModel } from "./app-read-model.ts";
+import type { AppReadModel } from "../app/app-read-model.ts";
 import type { GameReadModelOverlayAction, GameReadModelOverlayView } from "./game-read-model.ts";
-import { createLifeIconSvgMarkup } from "./icons.ts";
+import { createLifeIconSvgMarkup } from "../icons.ts";
 
 export type DomGameUiEvent =
   | { type: "pause-toggle" }

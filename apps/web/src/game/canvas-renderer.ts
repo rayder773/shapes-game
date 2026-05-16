@@ -4,7 +4,7 @@ import {
   getCoinSpokes,
   getLifeCrossSegments,
   getLifeDiamondPoints,
-} from "./icons.ts";
+} from "../icons.ts";
 import type { GameReadModelEntity } from "./game-read-model.ts";
 
 type Shape = "circle" | "square" | "triangle";

@@ -1,5 +1,5 @@
-import type { AppReadModel } from "./app-read-model.ts";
-import type { GameplaySettingsValues } from "./gameplay-settings.ts";
+import type { AppReadModel } from "../app/app-read-model.ts";
+import type { GameplaySettingsValues } from "../game/gameplay-settings.ts";
 
 export type SettingsPageEvent =
   | { type: "settings-change"; field: keyof GameplaySettingsValues; value: number }
