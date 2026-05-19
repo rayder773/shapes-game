@@ -40,6 +40,7 @@ const COLOR_MAP: Record<ColorName, string> = {
 };
 const LIFE_COLOR = "#b894ff";
 const COIN_COLOR = "#ffd166";
+const PICKUP_TIMER_WARNING_RATIO = 0.25;
 
 function getTriangleVertices(size: number): Array<{ x: number; y: number }> {
   return [
@@ -143,6 +144,42 @@ export function createCanvasRenderer({ context, scale }: CanvasRendererDependenc
     }
   }
 
+  function drawPickupLifetimeIndicator(
+    entity: GameReadModelEntity,
+    color: string,
+    now: () => number,
+  ): void {
+    if (
+      entity.pickupLifetimeRatio === undefined
+      || entity.kind !== "lifePickup" && entity.kind !== "coinPickup"
+    ) {
+      return;
+    }
+
+    const ratio = Math.max(0, Math.min(1, entity.pickupLifetimeRatio));
+    const warningProgress = ratio < PICKUP_TIMER_WARNING_RATIO
+      ? 1 - ratio / PICKUP_TIMER_WARNING_RATIO
+      : 0;
+    const pulse = warningProgress > 0
+      ? 0.75 + Math.sin(now() / 70) * 0.25
+      : 1;
+    const radius = entity.appearance.size * scale * 1.55;
+
+    context.save();
+    context.rotate(entity.rotation);
+    context.beginPath();
+    context.arc(0, 0, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
+    context.strokeStyle = color;
+    context.globalAlpha = 0.42 + warningProgress * pulse * 0.48;
+    context.lineWidth = 2 + warningProgress * 1.4;
+    context.lineCap = "round";
+    context.setLineDash([]);
+    context.shadowColor = color;
+    context.shadowBlur = 4 + warningProgress * 10;
+    context.stroke();
+    context.restore();
+  }
+
   function drawEntity(
     metrics: CanvasRendererMetrics,
     entity: GameReadModelEntity,
@@ -204,6 +241,8 @@ export function createCanvasRenderer({ context, scale }: CanvasRendererDependenc
       }
       drawPlayerMarker();
     }
+
+    drawPickupLifetimeIndicator(entity, color, now);
 
     context.restore();
   }

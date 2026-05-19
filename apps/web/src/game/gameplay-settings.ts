@@ -7,6 +7,9 @@ export type GameplayProfileOverrides = {
   maxTargets?: number;
   targetGrowthScoreStep?: number;
   lifeSpawnChancePercent?: number;
+  coinSpawnChancePercent?: number;
+  lifePickupLifetimeSeconds?: number;
+  coinPickupLifetimeSeconds?: number;
   startLives?: number;
   maxLives?: number;
 };
@@ -23,6 +26,9 @@ export type GameplaySettingsValues = {
   maxTargets: number;
   targetGrowthScoreStep: number;
   lifeSpawnChancePercent: number;
+  coinSpawnChancePercent: number;
+  lifePickupLifetimeSeconds: number;
+  coinPickupLifetimeSeconds: number;
   startLives: number;
   maxLives: number;
 };
@@ -37,6 +43,9 @@ const GAMEPLAY_SETTINGS_LIMITS: Record<keyof GameplaySettingsValues, { min: numb
   maxTargets: { min: 0, max: 30 },
   targetGrowthScoreStep: { min: 0, max: 30 },
   lifeSpawnChancePercent: { min: 0, max: 100 },
+  coinSpawnChancePercent: { min: 0, max: 100 },
+  lifePickupLifetimeSeconds: { min: 1, max: 10 },
+  coinPickupLifetimeSeconds: { min: 1, max: 10 },
   startLives: { min: 1, max: 10 },
   maxLives: { min: 1, max: 10 },
 };
@@ -95,6 +104,27 @@ export function sanitizeGameplayProfileOverrides(value: unknown): GameplayProfil
     overrides.lifeSpawnChancePercent = clampGameplaySettingValue(candidate.lifeSpawnChancePercent, "lifeSpawnChancePercent");
   }
 
+  if (
+    typeof candidate.coinSpawnChancePercent === "number"
+    && Number.isFinite(candidate.coinSpawnChancePercent)
+  ) {
+    overrides.coinSpawnChancePercent = clampGameplaySettingValue(candidate.coinSpawnChancePercent, "coinSpawnChancePercent");
+  }
+
+  if (
+    typeof candidate.lifePickupLifetimeSeconds === "number"
+    && Number.isFinite(candidate.lifePickupLifetimeSeconds)
+  ) {
+    overrides.lifePickupLifetimeSeconds = clampGameplaySettingValue(candidate.lifePickupLifetimeSeconds, "lifePickupLifetimeSeconds");
+  }
+
+  if (
+    typeof candidate.coinPickupLifetimeSeconds === "number"
+    && Number.isFinite(candidate.coinPickupLifetimeSeconds)
+  ) {
+    overrides.coinPickupLifetimeSeconds = clampGameplaySettingValue(candidate.coinPickupLifetimeSeconds, "coinPickupLifetimeSeconds");
+  }
+
   if (typeof candidate.startLives === "number" && Number.isFinite(candidate.startLives)) {
     overrides.startLives = clampGameplaySettingValue(candidate.startLives, "startLives");
   }
@@ -148,6 +178,9 @@ export function applyGameplayOverrides(
     maxTargets: overrides.maxTargets ?? defaults.maxTargets,
     targetGrowthScoreStep: overrides.targetGrowthScoreStep ?? defaults.targetGrowthScoreStep,
     lifeSpawnChancePercent: overrides.lifeSpawnChancePercent ?? defaults.lifeSpawnChancePercent,
+    coinSpawnChancePercent: overrides.coinSpawnChancePercent ?? defaults.coinSpawnChancePercent,
+    lifePickupLifetimeSeconds: overrides.lifePickupLifetimeSeconds ?? defaults.lifePickupLifetimeSeconds,
+    coinPickupLifetimeSeconds: overrides.coinPickupLifetimeSeconds ?? defaults.coinPickupLifetimeSeconds,
     startLives: Math.min(startLives, maxLives),
     maxLives,
   };
@@ -181,6 +214,18 @@ export function createPersistableOverrides(
 
   if (values.lifeSpawnChancePercent !== defaults.lifeSpawnChancePercent) {
     overrides.lifeSpawnChancePercent = clampGameplaySettingValue(values.lifeSpawnChancePercent, "lifeSpawnChancePercent");
+  }
+
+  if (values.coinSpawnChancePercent !== defaults.coinSpawnChancePercent) {
+    overrides.coinSpawnChancePercent = clampGameplaySettingValue(values.coinSpawnChancePercent, "coinSpawnChancePercent");
+  }
+
+  if (values.lifePickupLifetimeSeconds !== defaults.lifePickupLifetimeSeconds) {
+    overrides.lifePickupLifetimeSeconds = clampGameplaySettingValue(values.lifePickupLifetimeSeconds, "lifePickupLifetimeSeconds");
+  }
+
+  if (values.coinPickupLifetimeSeconds !== defaults.coinPickupLifetimeSeconds) {
+    overrides.coinPickupLifetimeSeconds = clampGameplaySettingValue(values.coinPickupLifetimeSeconds, "coinPickupLifetimeSeconds");
   }
 
   if (values.startLives !== defaults.startLives) {

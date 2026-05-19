@@ -50,6 +50,9 @@ describe("gameplay profile", () => {
       compactTouch: false,
       startTargetCount: 9,
       maxTargets: 20,
+      coinSpawnChance: 0.4,
+      lifePickupLifetimeSeconds: 3,
+      coinPickupLifetimeSeconds: 3,
     });
 
     setPhoneDevice(true);
@@ -58,6 +61,9 @@ describe("gameplay profile", () => {
       compactTouch: true,
       startTargetCount: 5,
       maxTargets: 12,
+      coinSpawnChance: 0.4,
+      lifePickupLifetimeSeconds: 3,
+      coinPickupLifetimeSeconds: 3,
     });
   });
 
@@ -66,6 +72,9 @@ describe("gameplay profile", () => {
       compactTouch: {},
       desktop: {
         targetSpeed: 8,
+        coinSpawnChancePercent: 70,
+        lifePickupLifetimeSeconds: 4,
+        coinPickupLifetimeSeconds: 5,
         startLives: 6,
         maxLives: 4,
       },
@@ -73,12 +82,18 @@ describe("gameplay profile", () => {
 
     expect(settingsEntity.settingsState.activeProfileKey).toBe("desktop");
     expect(settingsEntity.settingsState.draft.targetSpeed).toBe(8);
+    expect(settingsEntity.settingsState.draft.coinSpawnChancePercent).toBe(70);
+    expect(settingsEntity.settingsState.draft.lifePickupLifetimeSeconds).toBe(4);
+    expect(settingsEntity.settingsState.draft.coinPickupLifetimeSeconds).toBe(5);
     expect(settingsEntity.settingsState.draft.startLives).toBe(4);
     expect(settingsEntity.settingsState.draft.maxLives).toBe(4);
 
     expect(resolveGameplayProfile(settingsEntity, metrics)).toMatchObject({
       compactTouch: false,
       targetSpeed: 8,
+      coinSpawnChance: 0.7,
+      lifePickupLifetimeSeconds: 4,
+      coinPickupLifetimeSeconds: 5,
       startLives: 4,
       maxLives: 4,
     });

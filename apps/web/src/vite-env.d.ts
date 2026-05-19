@@ -25,6 +25,7 @@ type AntiMatchTestEntitySnapshot = {
     x: number;
     y: number;
   };
+  pickupLifetimeRatio?: number;
 };
 
 type AntiMatchTestSnapshot = {
@@ -61,6 +62,8 @@ type AntiMatchTestSnapshot = {
     targetGrowthScoreStep: number;
     lifeSpawnChance: number;
     coinSpawnChance: number;
+    lifePickupLifetimeSeconds: number;
+    coinPickupLifetimeSeconds: number;
     startLives: number;
     maxLives: number;
     spawnPadding: number;
@@ -115,6 +118,9 @@ type AntiMatchSettingsState = {
     maxTargets: number;
     targetGrowthScoreStep: number;
     lifeSpawnChancePercent: number;
+    coinSpawnChancePercent: number;
+    lifePickupLifetimeSeconds: number;
+    coinPickupLifetimeSeconds: number;
     startLives: number;
     maxLives: number;
   };
@@ -125,6 +131,9 @@ type AntiMatchSettingsState = {
     maxTargets: number;
     targetGrowthScoreStep: number;
     lifeSpawnChancePercent: number;
+    coinSpawnChancePercent: number;
+    lifePickupLifetimeSeconds: number;
+    coinPickupLifetimeSeconds: number;
     startLives: number;
     maxLives: number;
   };

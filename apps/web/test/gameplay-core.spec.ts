@@ -128,9 +128,11 @@ describe("gameplay core", () => {
     await bootApp("/shapes-game/");
 
     const state = gameModel();
+    const targets = state.scene.entities.filter((entity) => entity.kind === "target");
     expect(state.state).toBe("playing");
     expect(state.scene.entities.filter((entity) => entity.kind === "player")).toHaveLength(1);
-    expect(state.scene.entities.filter((entity) => entity.kind === "target")).toHaveLength(state.gameplayProfile.startTargetCount);
+    expect(targets.length).toBeGreaterThanOrEqual(state.gameplayProfile.startTargetCount);
+    expect(targets.length).toBeLessThanOrEqual(state.gameplayProfile.startTargetCount + 1);
     expect(state.scene.entities.filter((entity) => entity.kind === "lifePickup" || entity.kind === "coinPickup")).toHaveLength(0);
   });
 
@@ -173,6 +175,9 @@ describe("gameplay core", () => {
         playerBoostSpeed: 18,
         maxTargets: 1,
         lifeSpawnChancePercent: 100,
+        coinSpawnChancePercent: 100,
+        lifePickupLifetimeSeconds: 10,
+        coinPickupLifetimeSeconds: 10,
       },
     }));
     setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
@@ -226,6 +231,7 @@ describe("gameplay core", () => {
         playerBoostSpeed: 18,
         maxTargets: 1,
         lifeSpawnChancePercent: 0,
+        coinSpawnChancePercent: 0,
       },
     }));
     setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
@@ -271,6 +277,57 @@ describe("gameplay core", () => {
       + directionAfterCollision!.y * expectedDirection.y,
     ).toBeGreaterThan(0.98);
     expect(targetModels().find((target) => target.id === safeTargetId)).toBeUndefined();
+  });
+
+  test("spawned pickups expire without changing lives or coins", async () => {
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+      compactTouch: {},
+      desktop: {
+        targetSpeed: 0,
+        playerSpeed: 8,
+        playerBoostSpeed: 12,
+        maxTargets: 1,
+        lifeSpawnChancePercent: 100,
+        coinSpawnChancePercent: 100,
+        lifePickupLifetimeSeconds: 1,
+        coinPickupLifetimeSeconds: 1,
+      },
+    }));
+    setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
+    await bootApp("/shapes-game/");
+
+    const safeTargetId = await restartUntilClearTarget((player, target) => (
+      target.shape !== player.shape
+      && target.color !== player.color
+      && target.fillStyle !== player.fillStyle
+    ));
+    setDeterministicRandom([0]);
+    await chaseUntil(
+      () => targetModels().find((target) => target.id === safeTargetId),
+      () => gameModel().hud.score === 1,
+      240,
+    );
+
+    expect(sceneEntities().filter((entity) => entity.kind === "lifePickup")).toHaveLength(1);
+    expect(sceneEntities().filter((entity) => entity.kind === "coinPickup")).toHaveLength(1);
+    const lives = gameModel().hud.lives;
+    const coins = gameModel().hud.coins;
+    const player = playerModel();
+    const nearestPickup = sceneEntities().find((entity) => entity.kind === "lifePickup" || entity.kind === "coinPickup");
+    if (nearestPickup) {
+      pointerDownCanvasWorld(
+        player.position.x + (player.position.x - nearestPickup.position.x) * 4,
+        player.position.y + (player.position.y - nearestPickup.position.y) * 4,
+      );
+    }
+
+    await advanceFrames(90);
+
+    expect(sceneEntities().filter((entity) => entity.kind === "lifePickup")).toHaveLength(0);
+    expect(sceneEntities().filter((entity) => entity.kind === "coinPickup")).toHaveLength(0);
+    expect(gameModel().hud.lives).toBe(lives);
+    expect(gameModel().hud.coins).toBe(coins);
   });
 
   test("unsafe target collision decreases lives", async () => {

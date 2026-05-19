@@ -58,6 +58,11 @@ import {
   shouldPlayerContactPassThrough,
 } from "./game-rules.ts";
 import {
+  collectExpiredPickups,
+  createPickupLifetime,
+  createPickupSpawnRequests,
+} from "./game-pickups.ts";
+import {
   createSpawnAppearance,
   createSpawnRequests,
   findSpawnPosition,
@@ -82,6 +87,7 @@ import {
   type InteractiveEntity,
   type MovementDirection,
   type OverlayMode,
+  type PickupLifetime,
   type PhysicsBodyId,
   type PhysicsCommand,
   type PhysicsEntity,
@@ -419,6 +425,10 @@ function retryFullscreenOnUserGesture(): void {
     range: randomRange,
   };
 
+  const pickupSpawnRandom = {
+    next: () => Math.random(),
+  };
+
   function getCanvasMetrics(): CanvasMetrics {
     return game.canvasMetrics;
   }
@@ -657,6 +667,7 @@ function togglePauseGame(): void {
     appearance?: Appearance | null;
     safeForAppearance?: Appearance | null;
     spawnPadding?: number;
+    pickupLifetime?: PickupLifetime;
   }): GameEntity {
     const isPlayer = options.role === "player";
     const isLifePickup = options.role === "lifePickup";
@@ -680,6 +691,7 @@ function togglePauseGame(): void {
       },
       movementDirection: initialDirection,
       renderable: true,
+      ...(options.pickupLifetime ? { pickupLifetime: options.pickupLifetime } : {}),
       ...(isPlayer ? { player: true } : isLifePickup ? { lifePickup: true } : isCoinPickup ? { coinPickup: true } : { target: true }),
     };
 
@@ -872,13 +884,12 @@ function togglePauseGame(): void {
           targets_remaining: [...game.queries.targets].length,
         });
 
-        if (!hasLifePickup() && Math.random() < getGameplayProfile().lifeSpawnChance) {
-          game.queues.spawns.push({ type: "spawn-life" });
-        }
-
-        if (!hasCoinPickup() && Math.random() < getGameplayProfile().coinSpawnChance) {
-          game.queues.spawns.push({ type: "spawn-coin" });
-        }
+        game.queues.spawns.push(...createPickupSpawnRequests({
+          profile: getGameplayProfile(),
+          hasLifePickup: hasLifePickup(),
+          hasCoinPickup: hasCoinPickup(),
+          random: pickupSpawnRandom,
+        }));
       }
 
       if (command.type === "lose-life") {
@@ -981,6 +992,21 @@ function togglePauseGame(): void {
     }));
   }
 
+  function PickupLifetimeSystem(): void {
+    if (game.state !== "playing") return;
+
+    const expiredIds = collectExpiredPickups(
+      [...game.queries.lifePickups, ...game.queries.coinPickups],
+      FIXED_DT,
+    );
+
+    for (const expiredId of expiredIds) {
+      const entity = getEntityById(expiredId);
+      if (!entity || (!entity.lifePickup && !entity.coinPickup)) continue;
+      destroyFigureEntity(entity);
+    }
+  }
+
   function SpawnApplySystem(): void {
     while (game.queues.spawns.length > 0) {
       const request = game.queues.spawns.shift();
@@ -999,6 +1025,7 @@ function togglePauseGame(): void {
         createFigureEntity({
           role: "lifePickup",
           spawnPadding: getGameplayProfile().safeSpawnPadding,
+          pickupLifetime: createPickupLifetime(getGameplayProfile().lifePickupLifetimeSeconds),
         });
         continue;
       }
@@ -1007,6 +1034,7 @@ function togglePauseGame(): void {
         createFigureEntity({
           role: "coinPickup",
           spawnPadding: getGameplayProfile().safeSpawnPadding,
+          pickupLifetime: createPickupLifetime(getGameplayProfile().coinPickupLifetimeSeconds),
         });
       }
     }
@@ -1143,6 +1171,7 @@ function togglePauseGame(): void {
     CollisionCollectSystem,
     RuleResolutionSystem,
     GameplayMutationSystem,
+    PickupLifetimeSystem,
     SpawnPlanningSystem,
     SpawnApplySystem,
     TransformSyncSystem,

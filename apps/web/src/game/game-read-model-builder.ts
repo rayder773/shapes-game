@@ -73,6 +73,10 @@ function getEntityReadModelKind(entity: ReadModelSourceEntity): GameReadModelEnt
 }
 
 export function createEntityReadModel(entity: ReadModelSourceEntity): GameReadModelEntity {
+  const pickupLifetimeRatio = entity.pickupLifetime
+    ? Math.max(0, Math.min(1, 1 - entity.pickupLifetime.elapsedSeconds / entity.pickupLifetime.durationSeconds))
+    : undefined;
+
   return {
     id: entity.id,
     kind: getEntityReadModelKind(entity),
@@ -84,6 +88,7 @@ export function createEntityReadModel(entity: ReadModelSourceEntity): GameReadMo
     appearance: cloneReadModelValue(entity.appearance),
     ...(entity.movementDirection ? { movementDirection: cloneReadModelValue(entity.movementDirection) } : {}),
     ...(entity.physics ? { collisionRadius: entity.physics.radius } : {}),
+    ...(pickupLifetimeRatio !== undefined ? { pickupLifetimeRatio } : {}),
   };
 }
 
