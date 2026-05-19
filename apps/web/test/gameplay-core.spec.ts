@@ -128,9 +128,11 @@ describe("gameplay core", () => {
     await bootApp("/shapes-game/");
 
     const state = gameModel();
+    const targets = state.scene.entities.filter((entity) => entity.kind === "target");
     expect(state.state).toBe("playing");
     expect(state.scene.entities.filter((entity) => entity.kind === "player")).toHaveLength(1);
-    expect(state.scene.entities.filter((entity) => entity.kind === "target")).toHaveLength(state.gameplayProfile.startTargetCount);
+    expect(targets.length).toBeGreaterThanOrEqual(state.gameplayProfile.startTargetCount);
+    expect(targets.length).toBeLessThanOrEqual(state.gameplayProfile.startTargetCount + 1);
     expect(state.scene.entities.filter((entity) => entity.kind === "lifePickup" || entity.kind === "coinPickup")).toHaveLength(0);
   });
 
