@@ -15,7 +15,7 @@ describe("game analytics integration", () => {
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
     await bootApp("/shapes-game/");
-    const { analyticsClient } = await import("../src/analytics-client.ts");
+    const { analyticsClient } = await import("../src/platform/analytics-client.ts");
 
     click(getPauseButton());
     click(getPrimaryOverlayButton());

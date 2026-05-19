@@ -1,57 +1,54 @@
 import { createAdminPage } from "./admin/admin-page.ts";
-import { installAnalyticsLifecycleFlush } from "./analytics-client.ts";
-import { enterGamePage, enterNonGamePage, enterSettingsPage, initializeGame, persistActiveProfileSettings, resetSettingsDraftToDefaults, setOpenSettingsListener, subscribeToSettingsState, updateSettingsDraft } from "./game.ts";
+import { installAnalyticsLifecycleFlush } from "./platform/analytics-client.ts";
+import { initializeAppController } from "./app/app-controller.ts";
+import { createDomAppUi } from "./app/dom-app-ui.ts";
+import { createDomGameUi } from "./game/dom-game-ui.ts";
+import { initializeGame } from "./game/game.ts";
 import { initializeIcons } from "./icons.ts";
-import { registerPwaServiceWorker } from "./pwa.ts";
-import { getCurrentRoute, initializeRouter, navigateToRoute, subscribeToRouteChanges, type AppRoute } from "./router.ts";
-import { createSettingsPage } from "./settings-page.ts";
+import { registerPwaServiceWorker } from "./platform/pwa.ts";
+import { createSettingsPage } from "./settings/settings-page.ts";
 
-const settingsPage = createSettingsPage({
-  onValueChange(field, value) {
-    updateSettingsDraft(field, value);
-  },
-  onReset() {
-    resetSettingsDraftToDefaults();
-  },
-  onSave() {
-    persistActiveProfileSettings();
-    navigateToRoute("game");
-  },
-});
+function getGameCanvas(): HTMLCanvasElement {
+  const canvas = document.getElementById("game");
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    throw new Error("Canvas element not found");
+  }
+
+  return canvas;
+}
+
+function getGameCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("2D context is not available");
+  }
+
+  return context;
+}
+
+const settingsPage = createSettingsPage();
 const adminPage = createAdminPage();
+const gameCanvas = getGameCanvas();
+const gameContext = getGameCanvasContext(gameCanvas);
+const gameUi = createDomGameUi();
+const appUi = createDomAppUi({
+  gameUi,
+  settingsPage,
+  adminPage,
+  body: document.body,
+});
 
 document.body.append(settingsPage.element, adminPage.element);
 initializeIcons();
 installAnalyticsLifecycleFlush();
 registerPwaServiceWorker();
-
-subscribeToSettingsState((state) => {
-  settingsPage.render(state);
+initializeGame({
+  canvas: gameCanvas,
+  context: gameContext,
+  ui: gameUi,
+  rootStyle: document.documentElement.style,
 });
-
-setOpenSettingsListener(() => {
-  navigateToRoute("settings");
+initializeAppController({
+  appUi,
+  settingsPage,
 });
-
-function handleRouteChange(route: AppRoute): void {
-  settingsPage.setVisible(route === "settings");
-  adminPage.setVisible(route === "admin");
-  document.body.dataset.route = route;
-
-  switch (route) {
-    case "admin":
-      enterNonGamePage();
-      return;
-    case "settings":
-      enterSettingsPage();
-      return;
-    case "game":
-      enterGamePage();
-      return;
-  }
-}
-
-initializeGame();
-initializeRouter();
-subscribeToRouteChanges(handleRouteChange);
-handleRouteChange(getCurrentRoute());

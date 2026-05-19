@@ -57,6 +57,7 @@ export type PwaActionResult =
 export type PwaController = {
   initialize(): void;
   setGameRouteActive(active: boolean): void;
+  getActiveOverlayModel(): PwaInstallOverlayModel | null;
   getPauseInstallButtonState(): { visible: boolean; label: string };
   consumeGameOverInstallPrompt(): PwaInlineInstallPrompt | null;
   openInstallFlow(surface: "pause" | "postGameOver"): Promise<PwaActionResult>;
@@ -289,6 +290,10 @@ export function createPwaController(): PwaController {
       isGameRouteActive = active;
       syncInstallAvailability();
       emitStateChange();
+    },
+
+    getActiveOverlayModel(): PwaInstallOverlayModel | null {
+      return installPromoState.activeOverlay;
     },
 
     getPauseInstallButtonState(): { visible: boolean; label: string } {

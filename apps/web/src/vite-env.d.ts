@@ -8,15 +8,13 @@ interface ImportMetaEnv {
 
 type AntiMatchTestEntitySnapshot = {
   id: number;
-  player?: true;
-  target?: true;
-  lifePickup?: true;
-  coinPickup?: true;
-  transform?: {
+  kind: "player" | "target" | "lifePickup" | "coinPickup";
+  position: {
     x: number;
     y: number;
-    angle: number;
   };
+  rotation: number;
+  collisionRadius?: number;
   appearance?: {
     shape: "circle" | "square" | "triangle";
     color: "red" | "blue" | "green";
@@ -27,24 +25,31 @@ type AntiMatchTestEntitySnapshot = {
     x: number;
     y: number;
   };
-  physics?: {
-    bodyId: number;
-    radius: number;
-  };
 };
 
 type AntiMatchTestSnapshot = {
   state: "boot" | "playing" | "paused" | "gameOver";
-  score: number;
-  coins: number;
-  lives: number;
-  maxLives: number;
-  bestScore: number | null;
-  lastRoundBaseScore: number;
-  lastRoundCoinBonus: number;
-  lastRoundFinalScore: number;
-  lastRoundBestScore: number | null;
-  lastGameOverWasNewBest: boolean;
+  hud: {
+    score: number;
+    coins: number;
+    lives: number;
+    maxLives: number;
+    bestScore: number | null;
+  };
+  overlay: {
+    mode: "install" | "onboarding" | "pause" | "gameOver" | null;
+    view: AntiMatchOverlayView | null;
+  };
+  scene: {
+    entities: AntiMatchTestEntitySnapshot[];
+  };
+  roundResult: {
+    baseScore: number;
+    coinBonus: number;
+    finalScore: number;
+    bestScore: number | null;
+    wasNewBest: boolean;
+  };
   gameplayProfile: {
     compactTouch: boolean;
     startTargetCount: number;
@@ -62,7 +67,39 @@ type AntiMatchTestSnapshot = {
     safeSpawnPadding: number;
   };
   input: Record<"up" | "down" | "left" | "right", boolean>;
-  entities: AntiMatchTestEntitySnapshot[];
+  settings: AntiMatchSettingsState | null;
+};
+
+type AntiMatchOverlayAction =
+  | "resume"
+  | "restart"
+  | "acceptOnboarding"
+  | "openSettings"
+  | "confirmInstall"
+  | "dismissInstall";
+
+type AntiMatchOverlayButton = {
+  label: string;
+  action: AntiMatchOverlayAction;
+};
+
+type AntiMatchOverlayView = {
+  layout: "modal" | "sheet";
+  variant: "default" | "ios-hint" | "record" | "results" | "results-record";
+  title: string;
+  message: string;
+  tips: string[];
+  buttons: AntiMatchOverlayButton[];
+  installButton: { label: string; surface: "pause" | "postGameOver" } | null;
+  footerPrompt: { message: string; button: AntiMatchOverlayButton } | null;
+  results: {
+    baseScore: number;
+    coins: number;
+    coinBonus: number;
+    finalScore: number;
+    bestScore: number;
+    wasNewBest: boolean;
+  } | null;
 };
 
 type AntiMatchSettingsState = {
@@ -93,8 +130,21 @@ type AntiMatchSettingsState = {
   };
 };
 
+type AntiMatchAppShell = {
+  gamePageVisible: boolean;
+  settingsPageVisible: boolean;
+  adminPageVisible: boolean;
+};
+
+type AntiMatchAppSnapshot = {
+  route: "game" | "settings" | "admin";
+  game: AntiMatchTestSnapshot;
+  shell: AntiMatchAppShell;
+};
+
 type AntiMatchTestApi = {
-  snapshot: () => AntiMatchTestSnapshot;
+  model: () => AntiMatchTestSnapshot;
+  appModel: () => AntiMatchAppSnapshot;
   getPlayer: () => AntiMatchTestEntitySnapshot | null;
   getTargets: () => AntiMatchTestEntitySnapshot[];
   getLifePickups: () => AntiMatchTestEntitySnapshot[];

@@ -3,9 +3,9 @@ import {
   acceptOnboarding,
   bootApp,
   click,
+  gameModel,
   getSecondaryOverlayButton,
   getSettingsPage,
-  snapshot,
 } from "./helpers";
 
 function getSlider(label: string) {
@@ -54,9 +54,9 @@ describe("settings", () => {
     click([...document.querySelectorAll(".settings-button")].find((element) => element.textContent === "Сохранить и начать игру") as HTMLButtonElement);
 
     expect(window.location.pathname).toBe("/shapes-game");
-    expect(snapshot().gameplayProfile.targetSpeed).toBe(8);
-    expect(snapshot().gameplayProfile.startLives).toBe(5);
-    expect(snapshot().gameplayProfile.maxLives).toBe(7);
+    expect(gameModel().gameplayProfile.targetSpeed).toBe(8);
+    expect(gameModel().gameplayProfile.startLives).toBe(5);
+    expect(gameModel().gameplayProfile.maxLives).toBe(7);
 
     const saved = JSON.parse(window.localStorage.getItem("shapes-game.gameplaySettings") ?? "{}");
     expect(saved.desktop.targetSpeed).toBe(8);
@@ -65,8 +65,8 @@ describe("settings", () => {
     expect(saved.compactTouch).toEqual({});
 
     await bootApp("/shapes-game/");
-    expect(snapshot().gameplayProfile.targetSpeed).toBe(8);
-    expect(snapshot().gameplayProfile.startLives).toBe(5);
-    expect(snapshot().gameplayProfile.maxLives).toBe(7);
+    expect(gameModel().gameplayProfile.targetSpeed).toBe(8);
+    expect(gameModel().gameplayProfile.startLives).toBe(5);
+    expect(gameModel().gameplayProfile.maxLives).toBe(7);
   });
 });

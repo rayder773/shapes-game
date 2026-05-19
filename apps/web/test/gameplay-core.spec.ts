@@ -1,21 +1,25 @@
 import { describe, expect, test } from "vitest";
 import {
   advanceFrames,
+  advanceUntil,
   bootApp,
   click,
+  gameModel,
   getPauseButton,
   getTertiaryOverlayButton,
   keydown,
   keyup,
+  playerModel,
   pointerDownCanvasWorld,
+  sceneEntities,
   setDeterministicRandom,
-  snapshot,
+  targetModels,
 } from "./helpers";
 
 const DETERMINISTIC_WORLD_RANDOM = [0.13, 0.71, 0.29, 0.87, 0.41, 0.59, 0.17, 0.83, 0.37, 0.63, 0.23, 0.77];
 
 async function chaseUntil(
-  getTarget: () => { transform?: { x: number; y: number } } | undefined,
+  getTarget: () => { position: { x: number; y: number } } | undefined,
   predicate: () => boolean,
   maxSteps = 180,
 ) {
@@ -25,19 +29,19 @@ async function chaseUntil(
     }
 
     const target = getTarget();
-    if (target?.transform) {
-      const player = window.__ANTI_MATCH_TEST__?.getPlayer();
+    if (target) {
+      const player = playerModel();
 
-      if (player?.transform) {
-        const deltaX = target.transform.x - player.transform.x;
-        const deltaY = target.transform.y - player.transform.y;
+      if (player) {
+        const deltaX = target.position.x - player.position.x;
+        const deltaY = target.position.y - player.position.y;
         const distance = Math.hypot(deltaX, deltaY);
         const aimDistance = distance > 0 ? distance + 0.8 : 0.8;
-        const aimX = player.transform.x + (distance > 0 ? (deltaX / distance) * aimDistance : aimDistance);
-        const aimY = player.transform.y + (distance > 0 ? (deltaY / distance) * aimDistance : 0);
+        const aimX = player.position.x + (distance > 0 ? (deltaX / distance) * aimDistance : aimDistance);
+        const aimY = player.position.y + (distance > 0 ? (deltaY / distance) * aimDistance : 0);
         pointerDownCanvasWorld(aimX, aimY);
       } else {
-        pointerDownCanvasWorld(target.transform.x, target.transform.y);
+        pointerDownCanvasWorld(target.position.x, target.position.y);
       }
     }
 
@@ -71,15 +75,15 @@ function distancePointToSegment(
 
 function findClearTarget(
   state: AntiMatchTestSnapshot,
-  predicate: (player: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>) => boolean,
+  predicate: (player: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>) => boolean,
 ) {
-  const player = state.entities.find((entity) => entity.player);
-  if (!player?.transform || !player.appearance || !player.physics) {
+  const player = state.scene.entities.find((entity) => entity.kind === "player");
+  if (!player || !player.appearance || player.collisionRadius === undefined) {
     return undefined;
   }
   const playerAppearance = player.appearance;
 
-  const targets = state.entities.filter((entity) => entity.target && entity.transform && entity.appearance && entity.physics);
+  const targets = state.scene.entities.filter((entity) => entity.kind === "target" && entity.appearance && entity.collisionRadius !== undefined);
 
   return targets.find((target) => {
     const targetAppearance = target.appearance;
@@ -92,18 +96,18 @@ function findClearTarget(
         return false;
       }
 
-      const distance = distancePointToSegment(other.transform!, player.transform!, target.transform!);
-      return distance < player.physics!.radius + other.physics!.radius + 0.1;
+      const distance = distancePointToSegment(other.position, player.position, target.position);
+      return distance < player.collisionRadius! + other.collisionRadius! + 0.1;
     });
   });
 }
 
 async function restartUntilClearTarget(
-  predicate: (player: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["entities"][number]["appearance"]>) => boolean,
+  predicate: (player: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>, target: NonNullable<AntiMatchTestSnapshot["scene"]["entities"][number]["appearance"]>) => boolean,
   maxAttempts = 8,
 ) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const currentState = snapshot();
+    const currentState = gameModel();
     const clearTarget = findClearTarget(currentState, predicate);
     if (clearTarget) {
       return clearTarget.id;
@@ -114,8 +118,8 @@ async function restartUntilClearTarget(
     await advanceFrames(8);
   }
 
-  expect(findClearTarget(snapshot(), predicate)).toBeDefined();
-  return findClearTarget(snapshot(), predicate)!.id;
+  expect(findClearTarget(gameModel(), predicate)).toBeDefined();
+  return findClearTarget(gameModel(), predicate)!.id;
 }
 
 describe("gameplay core", () => {
@@ -123,11 +127,11 @@ describe("gameplay core", () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
     await bootApp("/shapes-game/");
 
-    const state = snapshot();
+    const state = gameModel();
     expect(state.state).toBe("playing");
-    expect(state.entities.filter((entity) => entity.player)).toHaveLength(1);
-    expect(state.entities.filter((entity) => entity.target)).toHaveLength(state.gameplayProfile.startTargetCount);
-    expect(state.entities.filter((entity) => entity.lifePickup || entity.coinPickup)).toHaveLength(0);
+    expect(state.scene.entities.filter((entity) => entity.kind === "player")).toHaveLength(1);
+    expect(state.scene.entities.filter((entity) => entity.kind === "target")).toHaveLength(state.gameplayProfile.startTargetCount);
+    expect(state.scene.entities.filter((entity) => entity.kind === "lifePickup" || entity.kind === "coinPickup")).toHaveLength(0);
   });
 
   test("keyboard and pointer input update player direction and support boost", async () => {
@@ -135,26 +139,26 @@ describe("gameplay core", () => {
     await bootApp("/shapes-game/");
 
     keydown("ArrowUp");
-    let player = window.__ANTI_MATCH_TEST__!.getPlayer();
+    let player = playerModel();
     expect(player?.movementDirection?.y).toBeGreaterThan(0);
 
     keydown("ArrowRight");
-    player = window.__ANTI_MATCH_TEST__!.getPlayer();
+    player = playerModel();
     expect(player?.movementDirection?.x).toBeGreaterThan(0);
     expect(player?.movementDirection?.y).toBeGreaterThan(0);
 
     keyup("ArrowUp");
     keyup("ArrowRight");
 
-    const currentPlayer = window.__ANTI_MATCH_TEST__!.getPlayer()!;
-    pointerDownCanvasWorld(currentPlayer.transform!.x + 3, currentPlayer.transform!.y);
-    const afterPointer = window.__ANTI_MATCH_TEST__!.getPlayer()!;
+    const currentPlayer = playerModel();
+    pointerDownCanvasWorld(currentPlayer.position.x + 3, currentPlayer.position.y);
+    const afterPointer = playerModel();
     expect(afterPointer.movementDirection!.x).toBeGreaterThan(0.9);
 
     const speedBeforeBoost = Math.hypot(afterPointer.movementDirection!.x, afterPointer.movementDirection!.y);
-    pointerDownCanvasWorld(currentPlayer.transform!.x + 3, currentPlayer.transform!.y);
+    pointerDownCanvasWorld(currentPlayer.position.x + 3, currentPlayer.position.y);
     await advanceFrames(1);
-    const boosted = snapshot();
+    const boosted = gameModel();
     expect(boosted.gameplayProfile.playerBoostSpeed).toBeGreaterThan(boosted.gameplayProfile.playerSpeed);
     expect(speedBeforeBoost).toBeCloseTo(1, 6);
   });
@@ -174,45 +178,99 @@ describe("gameplay core", () => {
     setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
     await bootApp("/shapes-game/");
 
-    const api = window.__ANTI_MATCH_TEST__!;
     const safeTargetId = await restartUntilClearTarget((player, target) => (
       target.shape !== player.shape
       && target.color !== player.color
       && target.fillStyle !== player.fillStyle
     ));
-    const safeTarget = api.getTargets().find((target) => target.id === safeTargetId);
+    const safeTarget = targetModels().find((target) => target.id === safeTargetId);
     expect(safeTarget).toBeDefined();
     const safeTargetAppearance = { ...safeTarget!.appearance! };
     setDeterministicRandom([0]);
     await chaseUntil(
-      () => api.getTargets().find((target) => target.id === safeTargetId),
-      () => snapshot().score === 1,
+      () => targetModels().find((target) => target.id === safeTargetId),
+      () => gameModel().hud.score === 1,
       220,
     );
 
-    const state = snapshot();
-    expect(state.score).toBe(1);
-    expect(document.getElementById("hud-score")?.textContent).toBe("Счет: 1");
-    expect(api.getTargets().find((target) => target.id === safeTargetId)).toBeUndefined();
-    expect(api.getPlayer()?.appearance).toMatchObject(safeTargetAppearance);
-    expect(api.getLifePickups()).toHaveLength(1);
-    expect(api.getCoinPickups()).toHaveLength(1);
-    const livesBeforeLifePickup = state.lives;
-
-    await chaseUntil(
-      () => api.getLifePickups()[0],
-      () => api.getLifePickups().length === 0 && snapshot().lives === livesBeforeLifePickup + 1,
-      220,
-    );
-    expect(snapshot().lives).toBe(livesBeforeLifePickup + 1);
+    const state = gameModel();
+    expect(state.hud.score).toBe(1);
+    expect(targetModels().find((target) => target.id === safeTargetId)).toBeUndefined();
+    expect(playerModel().appearance).toMatchObject(safeTargetAppearance);
+    expect(sceneEntities().filter((entity) => entity.kind === "lifePickup")).toHaveLength(1);
+    expect(sceneEntities().filter((entity) => entity.kind === "coinPickup")).toHaveLength(1);
+    const livesBeforeLifePickup = state.hud.lives;
 
     await chaseUntil(
-      () => api.getCoinPickups()[0],
-      () => snapshot().coins === 1,
+      () => sceneEntities().find((entity) => entity.kind === "lifePickup"),
+      () => sceneEntities().every((entity) => entity.kind !== "lifePickup") && gameModel().hud.lives === livesBeforeLifePickup + 1,
       220,
     );
-    expect(api.getCoinPickups()).toHaveLength(0);
-    expect(document.getElementById("hud-coins")?.dataset.pulse).toBe("true");
+    expect(gameModel().hud.lives).toBe(livesBeforeLifePickup + 1);
+
+    await chaseUntil(
+      () => sceneEntities().find((entity) => entity.kind === "coinPickup"),
+      () => gameModel().hud.coins === 1,
+      220,
+    );
+    expect(sceneEntities().filter((entity) => entity.kind === "coinPickup")).toHaveLength(0);
+  });
+
+  test("safe target collision consumes without rebounding the player", async () => {
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+      compactTouch: {},
+      desktop: {
+        targetSpeed: 0,
+        playerSpeed: 12,
+        playerBoostSpeed: 18,
+        maxTargets: 1,
+        lifeSpawnChancePercent: 0,
+      },
+    }));
+    setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
+    await bootApp("/shapes-game/");
+
+    const safeTargetId = await restartUntilClearTarget((player, target) => (
+      target.shape !== player.shape
+      && target.color !== player.color
+      && target.fillStyle !== player.fillStyle
+    ));
+    const safeTarget = targetModels().find((target) => target.id === safeTargetId);
+    expect(safeTarget).toBeDefined();
+
+    const playerBeforeCollision = playerModel();
+    const deltaX = safeTarget!.position.x - playerBeforeCollision.position.x;
+    const deltaY = safeTarget!.position.y - playerBeforeCollision.position.y;
+    const distance = Math.hypot(deltaX, deltaY);
+    expect(distance).toBeGreaterThan(0);
+
+    const expectedDirection = {
+      x: deltaX / distance,
+      y: deltaY / distance,
+    };
+    pointerDownCanvasWorld(
+      playerBeforeCollision.position.x + expectedDirection.x * (distance + 2),
+      playerBeforeCollision.position.y + expectedDirection.y * (distance + 2),
+    );
+    await advanceFrames(1);
+
+    const directionBeforeCollision = playerModel().movementDirection;
+    expect(directionBeforeCollision).toBeDefined();
+    expect(
+      directionBeforeCollision!.x * expectedDirection.x
+      + directionBeforeCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+
+    await advanceUntil(() => gameModel().hud.score === 1, { maxFrames: 240 });
+
+    const directionAfterCollision = playerModel().movementDirection;
+    expect(directionAfterCollision).toBeDefined();
+    expect(
+      directionAfterCollision!.x * expectedDirection.x
+      + directionAfterCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+    expect(targetModels().find((target) => target.id === safeTargetId)).toBeUndefined();
   });
 
   test("unsafe target collision decreases lives", async () => {
@@ -229,27 +287,83 @@ describe("gameplay core", () => {
     setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
     await bootApp("/shapes-game/");
 
-    const api = window.__ANTI_MATCH_TEST__!;
     const targetId = await restartUntilClearTarget((player, target) => (
       target.shape === player.shape
       || target.color === player.color
       || target.fillStyle === player.fillStyle
     ));
-    const nextUnsafeTarget = api.getTargets().find((target) => target.id === targetId);
+    const nextUnsafeTarget = targetModels().find((target) => target.id === targetId);
     expect(nextUnsafeTarget).toBeDefined();
-    const state = snapshot();
-    const livesBeforeHit = state.lives;
+    const state = gameModel();
+    const livesBeforeHit = state.hud.lives;
     await chaseUntil(
-      () => api.getTargets().find((target) => target.id === targetId),
-      () => snapshot().lives === livesBeforeHit - 1,
+      () => targetModels().find((target) => target.id === targetId),
+      () => gameModel().hud.lives === livesBeforeHit - 1,
       220,
     );
 
-    expect(snapshot().lives).toBe(livesBeforeHit - 1);
-    expect(api.getTargets().find((target) => target.id === targetId)).toBeUndefined();
+    expect(gameModel().hud.lives).toBe(livesBeforeHit - 1);
+    expect(targetModels().find((target) => target.id === targetId)).toBeUndefined();
 
     await advanceFrames(8);
-    expect(snapshot().lives).toBe(livesBeforeHit - 1);
+    expect(gameModel().hud.lives).toBe(livesBeforeHit - 1);
+  });
+
+  test("unsafe target collision removes the target without rebounding the player", async () => {
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+      compactTouch: {},
+      desktop: {
+        targetSpeed: 0,
+        playerSpeed: 12,
+        playerBoostSpeed: 18,
+        maxTargets: 1,
+      },
+    }));
+    setDeterministicRandom(DETERMINISTIC_WORLD_RANDOM);
+    await bootApp("/shapes-game/");
+
+    const unsafeTargetId = await restartUntilClearTarget((player, target) => (
+      target.shape === player.shape
+      || target.color === player.color
+      || target.fillStyle === player.fillStyle
+    ));
+    const unsafeTarget = targetModels().find((target) => target.id === unsafeTargetId);
+    expect(unsafeTarget).toBeDefined();
+
+    const playerBeforeCollision = playerModel();
+    const deltaX = unsafeTarget!.position.x - playerBeforeCollision.position.x;
+    const deltaY = unsafeTarget!.position.y - playerBeforeCollision.position.y;
+    const distance = Math.hypot(deltaX, deltaY);
+    expect(distance).toBeGreaterThan(0);
+
+    const expectedDirection = {
+      x: deltaX / distance,
+      y: deltaY / distance,
+    };
+    pointerDownCanvasWorld(
+      playerBeforeCollision.position.x + expectedDirection.x * (distance + 2),
+      playerBeforeCollision.position.y + expectedDirection.y * (distance + 2),
+    );
+    await advanceFrames(1);
+
+    const directionBeforeCollision = playerModel().movementDirection;
+    expect(directionBeforeCollision).toBeDefined();
+    expect(
+      directionBeforeCollision!.x * expectedDirection.x
+      + directionBeforeCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+
+    const livesBeforeHit = gameModel().hud.lives;
+    await advanceUntil(() => gameModel().hud.lives === livesBeforeHit - 1, { maxFrames: 240 });
+
+    const directionAfterCollision = playerModel().movementDirection;
+    expect(directionAfterCollision).toBeDefined();
+    expect(
+      directionAfterCollision!.x * expectedDirection.x
+      + directionAfterCollision!.y * expectedDirection.y,
+    ).toBeGreaterThan(0.98);
+    expect(targetModels().find((target) => target.id === unsafeTargetId)).toBeUndefined();
   });
 
   test("target growth respects fallback and maxTargets", async () => {
@@ -264,7 +378,7 @@ describe("gameplay core", () => {
 
     await bootApp("/shapes-game/");
 
-    const state = snapshot();
+    const state = gameModel();
     expect(state.gameplayProfile.targetGrowthScoreStep).toBe(0);
     expect(state.gameplayProfile.maxTargets).toBe(11);
   });

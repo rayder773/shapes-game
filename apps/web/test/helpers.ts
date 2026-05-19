@@ -50,10 +50,43 @@ export async function bootApp(path = "/shapes-game/") {
   return window.__ANTI_MATCH_TEST__;
 }
 
-export function snapshot() {
+export function model() {
   const api = window.__ANTI_MATCH_TEST__;
   expect(api).toBeDefined();
-  return api!.snapshot();
+  return api!.model();
+}
+
+export function gameModel() {
+  return model();
+}
+
+export function appModel() {
+  const api = window.__ANTI_MATCH_TEST__;
+  expect(api).toBeDefined();
+  return api!.appModel();
+}
+
+export function sceneEntities() {
+  return gameModel().scene.entities;
+}
+
+export function playerModel() {
+  const player = window.__ANTI_MATCH_TEST__?.getPlayer();
+  expect(player).not.toBeNull();
+  expect(player).toBeDefined();
+  return player!;
+}
+
+export function targetModels() {
+  const api = window.__ANTI_MATCH_TEST__;
+  expect(api).toBeDefined();
+  return api!.getTargets();
+}
+
+export function settingsModel() {
+  const api = window.__ANTI_MATCH_TEST__;
+  expect(api).toBeDefined();
+  return api!.getSettingsState();
 }
 
 export function getCanvasLog() {
@@ -224,7 +257,7 @@ export function setDeterministicRandom(values: number[]) {
 }
 
 export async function waitForPlayingState() {
-  await advanceUntil(() => snapshot().state === "playing");
+  await advanceUntil(() => gameModel().state === "playing");
 }
 
 beforeEach(() => {

@@ -3,8 +3,8 @@ import {
   bootApp,
   getCanvas,
   getPauseButton,
-  getSettingsPage,
-  snapshot,
+  appModel,
+  gameModel,
 } from "./helpers";
 
 describe("app shell and routing", () => {
@@ -14,19 +14,20 @@ describe("app shell and routing", () => {
     expect(getCanvas().classList.contains("app-hidden")).toBe(false);
     expect(document.getElementById("hud-score")?.textContent).toBe("Счет: 0");
     expect(getPauseButton().getAttribute("aria-label")).toBe("Продолжить игру");
-    expect(getSettingsPage().hidden).toBe(true);
-    expect(snapshot().state).toBe("paused");
+    expect(appModel().route).toBe("game");
+    expect(appModel().shell.gamePageVisible).toBe(true);
+    expect(appModel().shell.settingsPageVisible).toBe(false);
+    expect(gameModel().state).toBe("paused");
   });
 
   test("boots settings route and hides game surface", async () => {
     await bootApp("/shapes-game/settings");
 
     expect(window.location.pathname).toBe("/shapes-game/settings");
-    expect(getCanvas().classList.contains("app-hidden")).toBe(true);
-    const settingsPage = document.querySelector<HTMLElement>(".settings-page");
-    expect(settingsPage?.hasAttribute("hidden")).toBe(false);
-    expect(getComputedStyle(settingsPage!).display).not.toBe("none");
-    expect(document.getElementById("overlay")?.classList.contains("app-hidden")).toBe(true);
+    expect(appModel().route).toBe("settings");
+    expect(appModel().shell.gamePageVisible).toBe(false);
+    expect(appModel().shell.settingsPageVisible).toBe(true);
+    expect(appModel().shell.adminPageVisible).toBe(false);
   });
 
   test("boots admin route and hides game and settings surfaces", async () => {
@@ -41,21 +42,18 @@ describe("app shell and routing", () => {
     await bootApp("/shapes-game/admin");
 
     expect(window.location.pathname).toBe("/shapes-game/admin");
-    expect(getCanvas().classList.contains("app-hidden")).toBe(true);
-    const settingsPage = document.querySelector<HTMLElement>(".settings-page");
-    const adminPage = document.querySelector<HTMLElement>(".admin-page");
-    expect(settingsPage?.hasAttribute("hidden")).toBe(true);
-    expect(getComputedStyle(settingsPage!).display).toBe("none");
-    expect(adminPage?.hasAttribute("hidden")).toBe(false);
-    expect(getComputedStyle(adminPage!).display).not.toBe("none");
-    expect(document.getElementById("overlay")?.classList.contains("app-hidden")).toBe(true);
+    expect(appModel().route).toBe("admin");
+    expect(appModel().shell.gamePageVisible).toBe(false);
+    expect(appModel().shell.settingsPageVisible).toBe(false);
+    expect(appModel().shell.adminPageVisible).toBe(true);
   });
 
   test("supports SPA fallback query param restoration", async () => {
     await bootApp("/shapes-game/?p=/settings");
 
     expect(window.location.pathname).toBe("/shapes-game/settings");
-    expect(getCanvas().classList.contains("app-hidden")).toBe(true);
+    expect(appModel().route).toBe("settings");
+    expect(appModel().shell.gamePageVisible).toBe(false);
   });
 
   test("supports SPA fallback query param restoration for admin", async () => {
@@ -70,6 +68,7 @@ describe("app shell and routing", () => {
     await bootApp("/shapes-game/?p=/admin");
 
     expect(window.location.pathname).toBe("/shapes-game/admin");
-    expect(document.querySelector(".admin-page")?.hasAttribute("hidden")).toBe(false);
+    expect(appModel().route).toBe("admin");
+    expect(appModel().shell.adminPageVisible).toBe(true);
   });
 });
