@@ -34,6 +34,7 @@ export type GameReadModelEntity = {
   collisionRadius?: number;
   appearance: GameReadModelAppearance;
   movementDirection?: GameReadModelMovementDirection;
+  pickupLifetimeRatio?: number;
 };
 
 export type GameReadModelGameplayProfile = {
@@ -47,6 +48,8 @@ export type GameReadModelGameplayProfile = {
   targetGrowthScoreStep: number;
   lifeSpawnChance: number;
   coinSpawnChance: number;
+  lifePickupLifetimeSeconds: number;
+  coinPickupLifetimeSeconds: number;
   startLives: number;
   maxLives: number;
   spawnPadding: number;
@@ -129,6 +132,9 @@ export type GameReadModelSettings = {
     maxTargets: number;
     targetGrowthScoreStep: number;
     lifeSpawnChancePercent: number;
+    coinSpawnChancePercent: number;
+    lifePickupLifetimeSeconds: number;
+    coinPickupLifetimeSeconds: number;
     startLives: number;
     maxLives: number;
   };
@@ -139,6 +145,9 @@ export type GameReadModelSettings = {
     maxTargets: number;
     targetGrowthScoreStep: number;
     lifeSpawnChancePercent: number;
+    coinSpawnChancePercent: number;
+    lifePickupLifetimeSeconds: number;
+    coinPickupLifetimeSeconds: number;
     startLives: number;
     maxLives: number;
   };

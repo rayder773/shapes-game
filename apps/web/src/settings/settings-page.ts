@@ -27,6 +27,9 @@ const sliderDefinitions: Array<{
   { field: "maxTargets", label: "Максимум фигур", min: 0, max: 30, step: 1 },
   { field: "targetGrowthScoreStep", label: "Шаг увеличения фигур", min: 0, max: 30, step: 1 },
   { field: "lifeSpawnChancePercent", label: "Шанс появления жизни", min: 0, max: 100, step: 1, formatValue: (value) => `${value}%` },
+  { field: "coinSpawnChancePercent", label: "Шанс появления монетки", min: 0, max: 100, step: 1, formatValue: (value) => `${value}%` },
+  { field: "lifePickupLifetimeSeconds", label: "Время жизни жизни", min: 1, max: 10, step: 1, formatValue: (value) => `${value} сек` },
+  { field: "coinPickupLifetimeSeconds", label: "Время жизни монетки", min: 1, max: 10, step: 1, formatValue: (value) => `${value} сек` },
   { field: "startLives", label: "Начальное количество жизней", min: 1, max: 10, step: 1 },
   { field: "maxLives", label: "Максимум жизней", min: 1, max: 10, step: 1 },
 ];

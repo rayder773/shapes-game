@@ -11,6 +11,7 @@ class CanvasContextMock {
   fillStyle = "#000000";
   strokeStyle = "#000000";
   lineWidth = 1;
+  lineCap = "butt";
   lineDashOffset = 0;
   shadowColor = "transparent";
   shadowBlur = 0;
@@ -210,5 +211,23 @@ describe("canvas renderer", () => {
 
     expect(invulnerableArcCount).toBe(normalArcCount + 1);
     expect(invulnerableStrokeCount).toBe(normalStrokeCount + 1);
+  });
+
+  test("draws a remaining lifetime ring for pickups", () => {
+    const context = createContext();
+
+    renderEntities(context, [
+      {
+        ...baseEntity,
+        kind: "coinPickup",
+        pickupLifetimeRatio: 0.5,
+      },
+    ]);
+
+    const arcs = context.calls.filter((call) => call.method === "arc");
+    expect(arcs).toEqual(expect.arrayContaining([
+      { method: "arc", args: [0, 0, 23.25, -Math.PI / 2, Math.PI / 2] },
+    ]));
+    expect(context.calls.filter((call) => call.method === "save")).toHaveLength(2);
   });
 });

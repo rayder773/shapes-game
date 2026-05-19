@@ -41,6 +41,11 @@ export type MovementDirection = {
   y: number;
 };
 
+export type PickupLifetime = {
+  elapsedSeconds: number;
+  durationSeconds: number;
+};
+
 export type GameplaySettingsState = {
   activeProfileKey: GameplayProfileKey;
   saved: SavedGameplaySettings;
@@ -54,6 +59,7 @@ export type GameEntity = {
   appearance?: Appearance;
   physics?: PhysicsComponent;
   movementDirection?: MovementDirection;
+  pickupLifetime?: PickupLifetime;
   renderable?: true;
   player?: true;
   target?: true;
@@ -83,6 +89,8 @@ export type GameplayProfile = {
   targetGrowthScoreStep: number;
   lifeSpawnChance: number;
   coinSpawnChance: number;
+  lifePickupLifetimeSeconds: number;
+  coinPickupLifetimeSeconds: number;
   startLives: number;
   maxLives: number;
   spawnPadding: number;

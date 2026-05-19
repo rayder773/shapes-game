@@ -15,6 +15,8 @@ function createGameplayProfile(): GameReadModel["gameplayProfile"] {
     targetGrowthScoreStep: 5,
     lifeSpawnChance: 0.1,
     coinSpawnChance: 0.2,
+    lifePickupLifetimeSeconds: 3,
+    coinPickupLifetimeSeconds: 4,
     startLives: 3,
     maxLives: 5,
     spawnPadding: 1,
@@ -76,6 +78,9 @@ function createAppModel(overrides: {
           maxTargets: 10,
           targetGrowthScoreStep: 5,
           lifeSpawnChancePercent: 15,
+          coinSpawnChancePercent: 25,
+          lifePickupLifetimeSeconds: 3,
+          coinPickupLifetimeSeconds: 4,
           startLives: 3,
           maxLives: 5,
         },
@@ -86,6 +91,9 @@ function createAppModel(overrides: {
           maxTargets: 8,
           targetGrowthScoreStep: 5,
           lifeSpawnChancePercent: 10,
+          coinSpawnChancePercent: 40,
+          lifePickupLifetimeSeconds: 3,
+          coinPickupLifetimeSeconds: 3,
           startLives: 3,
           maxLives: 5,
         },
@@ -121,6 +129,9 @@ describe("settings page adapter", () => {
     expect(document.querySelector(".settings-subtitle")?.textContent).toContain("десктопный");
     expect(getSlider("Скорость фигур").value).toBe("8");
     expect(getSlider("Шанс появления жизни").value).toBe("15");
+    expect(getSlider("Шанс появления монетки").value).toBe("25");
+    expect(getSlider("Время жизни жизни").value).toBe("3");
+    expect(getSlider("Время жизни монетки").value).toBe("4");
 
     page.render(createAppModel({ settingsPageVisible: false }));
 
@@ -137,12 +148,16 @@ describe("settings page adapter", () => {
     const targetSpeed = getSlider("Скорость фигур");
     targetSpeed.value = "11";
     targetSpeed.dispatchEvent(new Event("input", { bubbles: true }));
+    const coinChance = getSlider("Шанс появления монетки");
+    coinChance.value = "75";
+    coinChance.dispatchEvent(new Event("input", { bubbles: true }));
 
     click([...document.querySelectorAll(".settings-button")].find((element) => element.textContent === "Дефолтные значения") as HTMLButtonElement);
     click([...document.querySelectorAll(".settings-button")].find((element) => element.textContent === "Сохранить и начать игру") as HTMLButtonElement);
 
     expect(events).toEqual([
       { type: "settings-change", field: "targetSpeed", value: 11 },
+      { type: "settings-change", field: "coinSpawnChancePercent", value: 75 },
       { type: "settings-reset" },
       { type: "settings-save" },
     ]);

@@ -24,6 +24,9 @@ function createSettingsEntity(): SettingsEntity {
         maxTargets: 8,
         targetGrowthScoreStep: 5,
         lifeSpawnChancePercent: 10,
+        coinSpawnChancePercent: 40,
+        lifePickupLifetimeSeconds: 3,
+        coinPickupLifetimeSeconds: 3,
         startLives: 3,
         maxLives: 5,
       },
@@ -34,6 +37,9 @@ function createSettingsEntity(): SettingsEntity {
         maxTargets: 8,
         targetGrowthScoreStep: 5,
         lifeSpawnChancePercent: 10,
+        coinSpawnChancePercent: 40,
+        lifePickupLifetimeSeconds: 3,
+        coinPickupLifetimeSeconds: 3,
         startLives: 3,
         maxLives: 5,
       },
@@ -91,9 +97,15 @@ describe("settings controller", () => {
     expect(settingsEntity.settingsState.draft.maxLives).toBe(5);
 
     updateSettingsDraft("targetSpeed", 9);
+    updateSettingsDraft("coinSpawnChancePercent", 80);
+    updateSettingsDraft("lifePickupLifetimeSeconds", 0);
+    updateSettingsDraft("coinPickupLifetimeSeconds", 11);
     persistActiveProfileSettings();
 
     expect(settingsEntity.settingsState.saved.desktop.targetSpeed).toBe(9);
+    expect(settingsEntity.settingsState.saved.desktop.coinSpawnChancePercent).toBe(80);
+    expect(settingsEntity.settingsState.saved.desktop.lifePickupLifetimeSeconds).toBe(1);
+    expect(settingsEntity.settingsState.saved.desktop.coinPickupLifetimeSeconds).toBe(10);
     expect(persistCount).toBe(1);
     expect(JSON.parse(window.localStorage.getItem("shapes-game.gameplaySettings") ?? "{}").desktop.targetSpeed).toBe(9);
   });

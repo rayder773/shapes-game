@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { buildAppReadModel } from "../src/app/app-read-model-builder.ts";
 import {
   buildGameReadModel,
+  createEntityReadModel,
   type GameReadModelRuntime,
 } from "../src/game/game-read-model-builder.ts";
 import type { GameReadModelSettings } from "../src/game/game-read-model.ts";
@@ -52,6 +53,9 @@ function createSettings(): GameReadModelSettings {
       maxTargets: 7,
       targetGrowthScoreStep: 3,
       lifeSpawnChancePercent: 15,
+      coinSpawnChancePercent: 25,
+      lifePickupLifetimeSeconds: 3,
+      coinPickupLifetimeSeconds: 4,
       startLives: 3,
       maxLives: 5,
     },
@@ -62,6 +66,9 @@ function createSettings(): GameReadModelSettings {
       maxTargets: 6,
       targetGrowthScoreStep: 2,
       lifeSpawnChancePercent: 10,
+      coinSpawnChancePercent: 40,
+      lifePickupLifetimeSeconds: 3,
+      coinPickupLifetimeSeconds: 3,
       startLives: 3,
       maxLives: 5,
     },
@@ -97,6 +104,8 @@ function createRuntime(overrides: Partial<GameReadModelRuntime> = {}): GameReadM
       targetGrowthScoreStep: 2,
       lifeSpawnChance: 0.1,
       coinSpawnChance: 0.2,
+      lifePickupLifetimeSeconds: 3,
+      coinPickupLifetimeSeconds: 4,
       startLives: 3,
       maxLives: 5,
       spawnPadding: 1,
@@ -188,6 +197,17 @@ describe("read model builder", () => {
     expect(model.scene.entities[0]).not.toHaveProperty("transform");
     expect(model.scene.entities[0]).not.toHaveProperty("physics");
     expect(model.scene.entities[0]).not.toHaveProperty("player");
+  });
+
+  test("exposes normalized pickup lifetime progress", () => {
+    expect(createEntityReadModel(createEntity({
+      id: 4,
+      coinPickup: true,
+      pickupLifetime: {
+        elapsedSeconds: 1,
+        durationSeconds: 4,
+      },
+    })).pickupLifetimeRatio).toBe(0.75);
   });
 
   test("builds onboarding and pause overlay views", () => {
