@@ -62,6 +62,7 @@ describe("game read model", () => {
         { label: "Продолжить", action: "resume" },
         { label: "Настройки", action: "openSettings" },
         { label: "Начать заново", action: "restart" },
+        { label: "Топ игроков", action: "openLeaderboard" },
       ],
     });
     expect(paused.roundResult.baseScore).toEqual(expect.any(Number));

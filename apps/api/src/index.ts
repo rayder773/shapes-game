@@ -2,6 +2,12 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { registerDevControllers } from "./dev";
+import {
+  createIndexedPublicIdentity,
+  createRandomPublicIdentity,
+  isKnownPublicIdentity,
+  type PlayerPublicIdentity,
+} from "./player-public-identity";
 
 type Bindings = {
   DB: D1Database;
@@ -38,6 +44,17 @@ type EventRow = {
 
 type VisitorLookupRow = {
   id: string;
+  public_color_id: string | null;
+  public_name_id: string | null;
+  best_score: number | null;
+};
+
+type LeaderboardRow = {
+  id: string;
+  best_score: number;
+  public_color_id: string;
+  public_name_id: string;
+  rank: number;
 };
 
 const defaultMaxBatchSize = 50;
@@ -184,6 +201,103 @@ app.post("/analytics/events", async (context) => {
   });
 });
 
+app.get("/players/me", async (context) => {
+  const clientId = context.req.query("client_id") ?? null;
+  const visitor = await resolveVisitor(context, clientId);
+
+  if (!visitor.ok) {
+    return context.json({ ok: false, error: "invalid_visitor" }, 401);
+  }
+
+  const publicIdentity = await ensureVisitorPublicIdentity(context, visitor.id);
+  const row = await getVisitor(context, visitor.id);
+
+  return context.json({
+    ok: true,
+    user_id: visitor.id,
+    best_score: row?.best_score ?? 0,
+    public_color_id: publicIdentity.publicColorId,
+    public_name_id: publicIdentity.publicNameId,
+  });
+});
+
+app.post("/scores", async (context) => {
+  const body = await parseJsonBody(context);
+
+  if (!body.ok) {
+    return context.json({ ok: false, error: "invalid_json" }, 400);
+  }
+
+  const clientId = isRecord(body.value) && typeof body.value.client_id === "string"
+    ? body.value.client_id
+    : null;
+  const score = isRecord(body.value) ? Number(body.value.score) : Number.NaN;
+
+  if (!Number.isInteger(score) || score < 0) {
+    return context.json({ ok: false, error: "invalid_score" }, 400);
+  }
+
+  const visitor = await resolveVisitor(context, clientId);
+
+  if (!visitor.ok) {
+    return context.json({ ok: false, error: "invalid_visitor" }, 401);
+  }
+
+  const publicIdentity = await ensureVisitorPublicIdentity(context, visitor.id);
+  const existingVisitor = await getVisitor(context, visitor.id);
+  const existingBestScore = existingVisitor?.best_score ?? 0;
+  const bestScore = Math.max(existingBestScore, score);
+
+  if (bestScore !== existingBestScore) {
+    await context.env.DB.prepare(
+      "UPDATE visitors SET best_score = ?, best_score_updated_at = ? WHERE id = ?",
+    )
+      .bind(bestScore, new Date().toISOString(), visitor.id)
+      .run();
+  }
+
+  return context.json({
+    ok: true,
+    user_id: visitor.id,
+    score,
+    best_score: bestScore,
+    public_color_id: publicIdentity.publicColorId,
+    public_name_id: publicIdentity.publicNameId,
+  });
+});
+
+app.get("/leaderboard", async (context) => {
+  const clientId = context.req.query("client_id") ?? null;
+  const limit = getLeaderboardLimit(context.req.query("limit"));
+  const around = context.req.query("around") === "current" ? "current" : "top";
+  const visitor = clientId ? await resolveVisitor(context, clientId) : { ok: false } as const;
+  const currentUserId = visitor.ok ? visitor.id : null;
+
+  if (currentUserId) {
+    await ensureVisitorPublicIdentity(context, currentUserId);
+  }
+
+  const currentRank = currentUserId ? await getLeaderboardRank(context, currentUserId) : null;
+  const offset = around === "current" && currentRank !== null
+    ? Math.max(0, currentRank - Math.ceil(limit / 2))
+    : 0;
+  const rows = await getLeaderboardRows(context, limit, offset);
+
+  return context.json({
+    ok: true,
+    current_user_id: currentUserId,
+    current_rank: currentRank,
+    entries: rows.map((row) => ({
+      userId: row.id,
+      rank: row.rank,
+      score: row.best_score,
+      publicColorId: row.public_color_id,
+      publicNameId: row.public_name_id,
+      isCurrentUser: row.id === currentUserId,
+    })),
+  });
+});
+
 function getMaxBatchSize(env: Bindings): number {
   const maxBatchSize = Number(env.ANALYTICS_MAX_BATCH_SIZE);
 
@@ -211,6 +325,16 @@ function getEventsBeforeId(value: string | undefined): number | null {
 
   const beforeId = Number(value);
   return Number.isInteger(beforeId) && beforeId > 0 ? beforeId : null;
+}
+
+function getLeaderboardLimit(value: string | undefined): number {
+  const limit = Number(value);
+
+  if (!Number.isInteger(limit) || limit < 1) {
+    return 20;
+  }
+
+  return Math.min(limit, 100);
 }
 
 function parseEvents(
@@ -309,6 +433,123 @@ async function resolveVisitor(
     .run();
 
   return { ok: true, id: newVisitorId };
+}
+
+async function getVisitor(context: AppContext, visitorId: string): Promise<VisitorLookupRow | null> {
+  return await context.env.DB.prepare(
+    "SELECT id, public_color_id, public_name_id, best_score FROM visitors WHERE id = ?",
+  )
+    .bind(visitorId)
+    .first<VisitorLookupRow>();
+}
+
+async function ensureVisitorPublicIdentity(
+  context: AppContext,
+  visitorId: string,
+): Promise<PlayerPublicIdentity> {
+  const visitor = await getVisitor(context, visitorId);
+
+  if (visitor?.public_color_id && visitor.public_name_id) {
+    const publicIdentity = {
+      publicColorId: visitor.public_color_id,
+      publicNameId: visitor.public_name_id,
+    };
+
+    if (isKnownPublicIdentity(publicIdentity)) {
+      return publicIdentity;
+    }
+  }
+
+  const publicIdentity = await findAvailablePublicIdentity(context, visitorId);
+
+  await context.env.DB.prepare(
+    `UPDATE visitors
+    SET public_color_id = ?, public_name_id = ?, public_identity_assigned_at = COALESCE(public_identity_assigned_at, ?)
+    WHERE id = ?`,
+  )
+    .bind(publicIdentity.publicColorId, publicIdentity.publicNameId, new Date().toISOString(), visitorId)
+    .run();
+
+  return publicIdentity;
+}
+
+async function findAvailablePublicIdentity(
+  context: AppContext,
+  visitorId: string,
+): Promise<PlayerPublicIdentity> {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const candidate = createRandomPublicIdentity();
+    const existing = await context.env.DB.prepare(
+      `SELECT id FROM visitors
+      WHERE public_color_id = ? AND public_name_id = ? AND id <> ?
+      LIMIT 1`,
+    )
+      .bind(candidate.publicColorId, candidate.publicNameId, visitorId)
+      .first<{ id: string }>();
+
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  const row = await context.env.DB.prepare("SELECT COUNT(*) AS count FROM visitors")
+    .first<{ count: number }>();
+
+  return createIndexedPublicIdentity(row?.count ?? 0);
+}
+
+async function getLeaderboardRank(context: AppContext, visitorId: string): Promise<number | null> {
+  const row = await context.env.DB.prepare(
+    `WITH ranked AS (
+      SELECT
+        id,
+        ROW_NUMBER() OVER (ORDER BY best_score DESC, created_at ASC, id ASC) AS rank
+      FROM visitors
+      WHERE best_score > 0 AND public_color_id IS NOT NULL AND public_name_id IS NOT NULL
+    )
+    SELECT rank FROM ranked WHERE id = ?`,
+  )
+    .bind(visitorId)
+    .first<{ rank: number }>();
+
+  return row?.rank ?? null;
+}
+
+async function getLeaderboardRows(
+  context: AppContext,
+  limit: number,
+  offset: number,
+): Promise<LeaderboardRow[]> {
+  const rows = await context.env.DB.prepare(
+    `WITH ranked AS (
+      SELECT
+        id,
+        best_score,
+        public_color_id,
+        public_name_id,
+        ROW_NUMBER() OVER (ORDER BY best_score DESC, created_at ASC, id ASC) AS rank
+      FROM visitors
+      WHERE best_score > 0 AND public_color_id IS NOT NULL AND public_name_id IS NOT NULL
+    )
+    SELECT id, best_score, public_color_id, public_name_id, rank
+    FROM ranked
+    ORDER BY rank ASC
+    LIMIT ? OFFSET ?`,
+  )
+    .bind(limit, offset)
+    .all<LeaderboardRow>();
+
+  return rows.results ?? [];
+}
+
+async function parseJsonBody(
+  context: AppContext,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  try {
+    return { ok: true, value: await context.req.json() };
+  } catch {
+    return { ok: false };
+  }
 }
 
 async function deleteVisitorWithEvents(context: AppContext, visitorId: string): Promise<boolean> {

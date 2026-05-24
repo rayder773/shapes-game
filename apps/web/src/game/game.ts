@@ -30,6 +30,7 @@ import {
   type AnalyticsEventType,
   type AnalyticsPayload,
 } from "../platform/analytics-client.ts";
+import { submitLeaderboardScore } from "../leaderboard/leaderboard-api.ts";
 import { getCurrentRoute } from "../platform/router.ts";
 import type {
   GameReadModel,
@@ -105,12 +106,14 @@ type FullscreenElement = HTMLElement & {
 };
 
 type OpenSettingsListener = () => void;
+type OpenLeaderboardListener = () => void;
 
 export type GameDomDependencies = {
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
   ui: DomGameUi;
   rootStyle: CSSStyleDeclaration;
+  openLeaderboard?: OpenLeaderboardListener;
 };
 
 const SCALE = 30;
@@ -134,6 +137,7 @@ let ctx: CanvasRenderingContext2D;
 let canvasRenderer: CanvasRenderer;
 let ui: DomGameUi;
 let rootStyle: CSSStyleDeclaration;
+let openLeaderboardListener: OpenLeaderboardListener | null = null;
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
 const game = createRuntime({
@@ -967,6 +971,7 @@ function togglePauseGame(): void {
           best_score: game.lastRoundBestScore,
           is_new_best: game.lastGameOverWasNewBest,
         });
+        void submitLeaderboardScore(finalScore);
         game.state = "gameOver";
         clearInputState();
         clearActiveTouchInputs();
@@ -1338,6 +1343,11 @@ function togglePauseGame(): void {
         return;
       }
 
+      if (event.action === "openLeaderboard") {
+        openLeaderboardListener?.();
+        return;
+      }
+
       if (event.action === "restart") {
         restartGame();
       }
@@ -1370,6 +1380,7 @@ function togglePauseGame(): void {
     canvasRenderer = createCanvasRenderer({ context: ctx, scale: SCALE });
     ui = dependencies.ui;
     rootStyle = dependencies.rootStyle;
+    openLeaderboardListener = dependencies.openLeaderboard ?? null;
     configureSettingsController({
       getSettingsEntity,
       onPersistActiveProfileSettings() {

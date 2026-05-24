@@ -11,32 +11,35 @@
 
 ## Фаза 0. Заткнуть критичное (1–2 дня) — БЕЗ этого в паблик нельзя
 
-1. **Закрыть `/admin/api/*` авторизацией** — [apps/api/src/index.ts:71-134](apps/api/src/index.ts#L71-L134). Сейчас на проде любой может `DELETE /admin/api/visitors/:id` и снести всю аналитику. Минимум: middleware с проверкой `Authorization: Bearer <secret>` из `wrangler secret`, либо вынести админ-роуты в отдельный Worker, недоступный извне.
-2. **Сузить CORS** — [apps/api/src/index.ts:54-55](apps/api/src/index.ts#L54-L55) сейчас `origin: "*"`. На прод-окружении должен быть только домен GH Pages (или будущий кастомный домен). Иначе кто угодно может флудить D1 событиями.
-3. **Rate limiting на `POST /analytics/events`** — иначе один скрипт-кидди исчерпает квоту Workers/D1. Используйте CF Rate Limiting или простой счётчик по IP в KV.
-4. **Тесты на API** — сейчас 0 тестов на `apps/api/src`. Хотя бы happy-path + auth-failures для `/analytics/events` и `/admin/*`.
+1. **Anonymous Player Identity + Leaderboard** — реализовано частично и должно идти первым production-пунктом, потому что это публичная игровая петля удержания.
+   - Уже сделано: публичная анонимная идентичность хранится в существующей `visitors` table как `public_color_id` + `public_name_id`, а не как готовая строка; словари вынесены во фронтовый модуль `player-public-identity`; добавлена миграция/backfill `0002_add_public_identity_and_scores.sql`; новые API `GET /players/me`, `POST /scores`, `GET /leaderboard`; leaderboard умеет открываться вокруг текущего игрока; UI показывает публичные имена, score и выделяет текущего игрока; кнопка `Топ игроков` есть на game over screen и в pause menu; технический visitor id в UI не выводится.
+   - Осталось перед продом: применить D1 migration на production, добавить API-тесты на identity/score/leaderboard, добавить минимальную защиту от фейковых score submission, вручную проверить production API + web env после деплоя.
+2. **Закрыть `/admin/api/*` авторизацией** — [apps/api/src/index.ts:71-134](apps/api/src/index.ts#L71-L134). Сейчас на проде любой может `DELETE /admin/api/visitors/:id` и снести всю аналитику. Минимум: middleware с проверкой `Authorization: Bearer <secret>` из `wrangler secret`, либо вынести админ-роуты в отдельный Worker, недоступный извне.
+3. **Сузить CORS** — [apps/api/src/index.ts:54-55](apps/api/src/index.ts#L54-L55) сейчас `origin: "*"`. На прод-окружении должен быть только домен GH Pages (или будущий кастомный домен). Иначе кто угодно может флудить D1 событиями.
+4. **Rate limiting на `POST /analytics/events`, `POST /scores`, `GET /leaderboard`** — иначе один скрипт-кидди исчерпает квоту Workers/D1. Используйте CF Rate Limiting или простой счётчик по IP в KV.
+5. **Тесты на API** — сейчас 0 тестов на `apps/api/src`. Хотя бы happy-path + auth-failures для `/analytics/events`, `/admin/*`, `/scores`, `/leaderboard`.
 
 ## Фаза 1. Юридический минимум (1 день) — обязателен из-за сбора IP/UA
 
-5. **Privacy Policy + Cookie/Analytics consent**. В D1 пишутся IP и User-Agent → это персональные данные по GDPR. Нужно: страница `/privacy`, баннер согласия (один раз, dismiss → флаг в localStorage; если отказ — не отправлять `client_id` и события). Сейчас этого вообще нет.
-6. **Terms of Use** — простая страница, особенно если будут донаты.
-7. **Data retention** — крон в Workers, чистящий `events` старше N дней. D1 free tier — 5 ГБ, но события быстро накопятся.
+6. **Privacy Policy + Cookie/Analytics consent**. В D1 пишутся IP и User-Agent → это персональные данные по GDPR. Нужно: страница `/privacy`, баннер согласия (один раз, dismiss → флаг в localStorage; если отказ — не отправлять события). Сейчас этого вообще нет.
+7. **Terms of Use** — простая страница, особенно если будут донаты.
+8. **Data retention** — крон в Workers, чистящий `events` старше N дней. D1 free tier — 5 ГБ, но события быстро накопятся.
 
 ## Фаза 2. Подготовить продукт к показу публике (2–4 дня)
 
-8. **README.md** на корне репо: что за игра, скриншот/гифка, ссылка играть, как запустить локально. Сейчас README нет нигде.
-9. **OG-метатеги и og-image** в [apps/web/index.html](apps/web/index.html) — без них шеры в Telegram/Twitter/Discord выглядят как голая ссылка. Самый дешёвый growth.
-10. **Кастомный домен** (опц.) — `antimatch.app` / `.fun` / `.io` за ~$10/год. Подключается к GH Pages бесплатно. Гораздо лучше для шеринга, чем `*.github.io/shapes-game/`.
-11. **Имя финализировать** — "AntiMatch" в `<title>`, в манифесте проверить, что совпадает.
-12. **i18n хотя бы EN+RU**. Сейчас UI полностью на русском — это режет аудиторию в ~50 раз. Минимум: завести `locales/{ru,en}.json`, ключи в коде. Без этого нет смысла идти на itch.io / Reddit / HN.
-13. **Звук** — простейшие SFX (consume, life lost, coin) через Howler.js или Web Audio. Игра ощущается мёртвой без них. Toggle mute обязателен.
-14. **Sentry (free tier)** — иначе не узнать о крашах у игроков. `@sentry/browser` + source maps в CI. Без него аналитика покажет «игрок ушёл», но не «потому что упало».
+9. **README.md** на корне репо: что за игра, скриншот/гифка, ссылка играть, как запустить локально. Сейчас README нет нигде.
+10. **OG-метатеги и og-image** в [apps/web/index.html](apps/web/index.html) — без них шеры в Telegram/Twitter/Discord выглядят как голая ссылка. Самый дешёвый growth.
+11. **Кастомный домен** (опц.) — `antimatch.app` / `.fun` / `.io` за ~$10/год. Подключается к GH Pages бесплатно. Гораздо лучше для шеринга, чем `*.github.io/shapes-game/`.
+12. **Имя финализировать** — "AntiMatch" в `<title>`, в манифесте проверить, что совпадает.
+13. **i18n хотя бы EN+RU**. Сейчас UI полностью на русском — это режет аудиторию в ~50 раз. Минимум: завести `locales/{ru,en}.json`, ключи в коде. Без этого нет смысла идти на itch.io / Reddit / HN.
+14. **Звук** — простейшие SFX (consume, life lost, coin) через Howler.js или Web Audio. Игра ощущается мёртвой без них. Toggle mute обязателен.
+15. **Sentry (free tier)** — иначе не узнать о крашах у игроков. `@sentry/browser` + source maps в CI. Без него аналитика покажет «игрок ушёл», но не «потому что упало».
 
 ## Фаза 3. Стата и обратная связь (2 дня)
 
-15. **Расширить событийную модель**: `app_loaded`, `first_paint`, `tutorial_completed`, `settings_changed`, `session_duration`. Сейчас события только внутри раунда — не видно воронку «зашёл → не нажал старт».
-16. **Дашборд для себя**. Есть `apps/api-dev-panel`, но он показывает сырой JSON. Нужны минимум 5 цифр: DAU, средняя длина сессии, retention D1/D7, distribution финального score, % дошедших до game over. Можно или допилить dev-panel, или просто SQL-вьюхи в D1 + Grafana Cloud free.
-17. **Кнопка фидбэка** в игре → форма Tally/Google Forms. Дешёвый канал сигнала «что не так».
+16. **Расширить событийную модель**: `app_loaded`, `first_paint`, `tutorial_completed`, `settings_changed`, `session_duration`. Сейчас события только внутри раунда — не видно воронку «зашёл → не нажал старт».
+17. **Дашборд для себя**. Есть `apps/api-dev-panel`, но он показывает сырой JSON. Нужны минимум 5 цифр: DAU, средняя длина сессии, retention D1/D7, distribution финального score, % дошедших до game over. Можно или допилить dev-panel, или просто SQL-вьюхи в D1 + Grafana Cloud free.
+18. **Кнопка фидбэка** в игре → форма Tally/Google Forms. Дешёвый канал сигнала «что не так».
 
 ## Фаза 4. Монетизация (по нарастанию усилий)
 
@@ -54,8 +57,7 @@
 
 ## Фаза 5. Удержание (2–3 недели работы, делать после первых данных)
 
-18. **Глобальный лидерборд** — главное, что в одиночной аркаде заставляет возвращаться. Требует: либо анонимные ники (nickname в localStorage + submit score endpoint с anti-cheat подписью), либо лёгкий auth (магик-линк по email через Resend free). API уже есть, нужна одна таблица `scores` + 2 эндпоинта.
-19. **Ежедневный/еженедельный режим** — seed для повторяемой генерации + лидерборд на день. Главный драйвер D7-retention в подобных играх.
+19. **Ежедневный/еженедельный режим** — seed для повторяемой генерации + отдельные сезонные результаты. Главный драйвер D7-retention в подобных играх.
 20. **Туториал-сценарий** — сейчас onboarding-модалка, но не объясняет смысл «AntiMatch» (фигура должна отличаться по всем свойствам). Без этого ~50% игроков сваливаются на первом раунде.
 21. **Прогрессия/анлоки** — арены, темы. Любая морковка повышает session-length.
 
@@ -69,9 +71,9 @@
 
 ## TL;DR порядок действий
 
-1. Заткнуть админку и CORS на API (Фаза 0) — блокер.
-2. Privacy/Terms/consent (Фаза 1) — юридический блокер.
-3. README + OG + i18n EN + звук + Sentry (Фаза 2) — без этого паблик не имеет смысла.
-4. itch.io + Buy Me a Coffee + Ko-fi кнопки (Фаза 4 lite) — первая монетизация.
-5. Запуск на Reddit r/WebGames, r/incremental_games, itch.io, HN Show — собрать статистику первую неделю.
-6. По данным решить: лидерборд (Фаза 5) или закрыть проект.
+1. Применить migration для Anonymous Player Identity + Leaderboard, проверить production API/web env и добавить API-тесты.
+2. Заткнуть админку и CORS на API (Фаза 0) — блокер.
+3. Privacy/Terms/consent (Фаза 1) — юридический блокер.
+4. README + OG + i18n EN + звук + Sentry (Фаза 2) — без этого паблик не имеет смысла.
+5. itch.io + Buy Me a Coffee + Ko-fi кнопки (Фаза 4 lite) — первая монетизация.
+6. Запуск на Reddit r/WebGames, r/incremental_games, itch.io, HN Show — собрать статистику первую неделю.
