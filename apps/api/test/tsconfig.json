@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "types": [
+      "@cloudflare/workers-types"
+    ]
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.d.ts",
+    "../src/**/*.ts"
+  ]
+}

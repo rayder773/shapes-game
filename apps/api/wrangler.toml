@@ -2,6 +2,11 @@ name = "shapes-game-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-03"
 
+# Phase 0 production hardening requires:
+# 1. `wrangler secret put ADMIN_API_TOKEN --env production`
+# 2. `wrangler kv namespace create shapes-game-rate-limit`
+# 3. Add RATE_LIMIT_KV bindings below for local/prod once the namespace IDs exist.
+
 [[d1_databases]]
 binding = "DB"
 database_name = "shapes-game-analytics-dev"

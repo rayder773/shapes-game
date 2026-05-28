@@ -11,13 +11,14 @@
 
 ## Фаза 0. Заткнуть критичное (1–2 дня) — БЕЗ этого в паблик нельзя
 
-1. **Anonymous Player Identity + Leaderboard** — реализовано частично и должно идти первым production-пунктом, потому что это публичная игровая петля удержания.
+1. **Anonymous Player Identity + Leaderboard** — кодовая часть практически закрыта и должна идти первым production-пунктом, потому что это публичная игровая петля удержания.
    - Уже сделано: публичная анонимная идентичность хранится в существующей `visitors` table как `public_color_id` + `public_name_id`, а не как готовая строка; словари вынесены во фронтовый модуль `player-public-identity`; добавлена миграция/backfill `0002_add_public_identity_and_scores.sql`; новые API `GET /players/me`, `POST /scores`, `GET /leaderboard`; leaderboard умеет открываться вокруг текущего игрока; UI показывает публичные имена, score и выделяет текущего игрока; кнопка `Топ игроков` есть на game over screen и в pause menu; технический visitor id в UI не выводится.
-   - Осталось перед продом: применить D1 migration на production, добавить API-тесты на identity/score/leaderboard, добавить минимальную защиту от фейковых score submission, вручную проверить production API + web env после деплоя.
-2. **Закрыть `/admin/api/*` авторизацией** — [apps/api/src/index.ts:71-134](apps/api/src/index.ts#L71-L134). Сейчас на проде любой может `DELETE /admin/api/visitors/:id` и снести всю аналитику. Минимум: middleware с проверкой `Authorization: Bearer <secret>` из `wrangler secret`, либо вынести админ-роуты в отдельный Worker, недоступный извне.
-3. **Сузить CORS** — [apps/api/src/index.ts:54-55](apps/api/src/index.ts#L54-L55) сейчас `origin: "*"`. На прод-окружении должен быть только домен GH Pages (или будущий кастомный домен). Иначе кто угодно может флудить D1 событиями.
-4. **Rate limiting на `POST /analytics/events`, `POST /scores`, `GET /leaderboard`** — иначе один скрипт-кидди исчерпает квоту Workers/D1. Используйте CF Rate Limiting или простой счётчик по IP в KV.
-5. **Тесты на API** — сейчас 0 тестов на `apps/api/src`. Хотя бы happy-path + auth-failures для `/analytics/events`, `/admin/*`, `/scores`, `/leaderboard`.
+   - Уже дополнительно сделано: API-тесты на identity/score/leaderboard/admin/CORS/rate limit добавлены в `apps/api/test`; минимальная защита от фейковых/suspicious score submission добавлена на `POST /scores`; для `/analytics/events`, `/scores`, `/leaderboard` добавлен KV-backed fixed-window rate limiting.
+   - Осталось перед продом: применить D1 migration на production, создать и привязать реальный Cloudflare KV namespace для rate limiting, задать `ADMIN_API_TOKEN` через `wrangler secret`, выставить production `CORS_ALLOWED_ORIGINS`, вручную проверить production API + web env после деплоя.
+2. **Закрыть `/admin/api/*` авторизацией** — сделано в коде: middleware с Bearer token добавлен в [apps/api/src/index.ts](apps/api/src/index.ts). Осталось только задать реальный `ADMIN_API_TOKEN` через `wrangler secret put ADMIN_API_TOKEN --env production`.
+3. **Сузить CORS** — сделано в коде: wildcard убран, production CORS теперь идёт через allowlist `CORS_ALLOWED_ORIGINS` в [apps/api/src/index.ts](apps/api/src/index.ts). Осталось выставить правильный origin для GH Pages/кастомного домена в production env.
+4. **Rate limiting на `POST /analytics/events`, `POST /scores`, `GET /leaderboard`** — сделано в коде: добавлен KV-backed fixed-window limiter в [apps/api/src/index.ts](apps/api/src/index.ts). Осталось создать и привязать реальный Cloudflare KV namespace в `wrangler`/Cloudflare.
+5. **Тесты на API** — сделано: добавлен Vitest suite в `apps/api/test` с happy-path и failure-path для `/analytics/events`, `/admin/*`, `/scores`, `/leaderboard`, включая auth/CORS/rate limit/anti-fraud сценарии.
 
 ## Фаза 1. Юридический минимум (1 день) — обязателен из-за сбора IP/UA
 
@@ -71,9 +72,8 @@
 
 ## TL;DR порядок действий
 
-1. Применить migration для Anonymous Player Identity + Leaderboard, проверить production API/web env и добавить API-тесты.
-2. Заткнуть админку и CORS на API (Фаза 0) — блокер.
-3. Privacy/Terms/consent (Фаза 1) — юридический блокер.
-4. README + OG + i18n EN + звук + Sentry (Фаза 2) — без этого паблик не имеет смысла.
-5. itch.io + Buy Me a Coffee + Ko-fi кнопки (Фаза 4 lite) — первая монетизация.
-6. Запуск на Reddit r/WebGames, r/incremental_games, itch.io, HN Show — собрать статистику первую неделю.
+1. Завершить внешний production setup для уже реализованной Фазы 0: применить D1 migration, создать/bind KV namespace, задать `ADMIN_API_TOKEN`, выставить `CORS_ALLOWED_ORIGINS`, прогнать production smoke-check API/web.
+2. Privacy/Terms/consent (Фаза 1) — теперь это следующий реальный блокер.
+3. README + OG + i18n EN + звук + Sentry (Фаза 2) — без этого паблик всё ещё не имеет смысла.
+4. itch.io + Buy Me a Coffee + Ko-fi кнопки (Фаза 4 lite) — первая монетизация.
+5. Запуск на Reddit r/WebGames, r/incremental_games, itch.io, HN Show — собрать статистику первую неделю.

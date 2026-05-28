@@ -11,8 +11,17 @@ import {
 
 type Bindings = {
   DB: D1Database;
+  RATE_LIMIT_KV?: KVNamespace;
   APP_ENV?: string;
   ANALYTICS_MAX_BATCH_SIZE?: string;
+  ADMIN_API_TOKEN?: string;
+  CORS_ALLOWED_ORIGINS?: string;
+  RATE_LIMIT_WINDOW_SECONDS?: string;
+  RATE_LIMIT_ANALYTICS_MAX?: string;
+  RATE_LIMIT_SCORES_MAX?: string;
+  RATE_LIMIT_LEADERBOARD_MAX?: string;
+  SCORE_ANTI_FRAUD_WINDOW_SECONDS?: string;
+  SCORE_ANTI_FRAUD_MAX_DELTA?: string;
 };
 
 type EventInput = {
@@ -47,6 +56,7 @@ type VisitorLookupRow = {
   public_color_id: string | null;
   public_name_id: string | null;
   best_score: number | null;
+  best_score_updated_at?: string | null;
 };
 
 type LeaderboardRow = {
@@ -69,11 +79,27 @@ type AppContext = Context<{ Bindings: Bindings }>;
 app.use(
   "*",
   cors({
-    origin: "*",
+    origin: (origin, context) => resolveCorsOrigin(origin, context.env),
     allowHeaders: ["content-type"],
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
   }),
 );
+
+app.use("/admin/api/*", async (context, next) => {
+  if ((context.env.APP_ENV ?? "development") === "development") {
+    await next();
+    return;
+  }
+
+  const expectedToken = context.env.ADMIN_API_TOKEN?.trim();
+  const authorization = context.req.header("authorization")?.trim();
+
+  if (!expectedToken || authorization !== `Bearer ${expectedToken}`) {
+    return context.json({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  await next();
+});
 
 app.get("/health", (context) => {
   return context.json({
@@ -160,6 +186,16 @@ app.delete("/admin/api/visitors/:visitorId", async (context) => {
 });
 
 app.post("/analytics/events", async (context) => {
+  const rateLimitResult = await applyRateLimit(
+    context,
+    "analytics",
+    getRateLimitMax(context.env.RATE_LIMIT_ANALYTICS_MAX, 120),
+  );
+
+  if (!rateLimitResult.ok) {
+    return context.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
   let body: unknown;
 
   try {
@@ -222,6 +258,16 @@ app.get("/players/me", async (context) => {
 });
 
 app.post("/scores", async (context) => {
+  const rateLimitResult = await applyRateLimit(
+    context,
+    "scores",
+    getRateLimitMax(context.env.RATE_LIMIT_SCORES_MAX, 30),
+  );
+
+  if (!rateLimitResult.ok) {
+    return context.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
   const body = await parseJsonBody(context);
 
   if (!body.ok) {
@@ -246,6 +292,11 @@ app.post("/scores", async (context) => {
   const publicIdentity = await ensureVisitorPublicIdentity(context, visitor.id);
   const existingVisitor = await getVisitor(context, visitor.id);
   const existingBestScore = existingVisitor?.best_score ?? 0;
+
+  if (isSuspiciousScoreSubmission(score, existingBestScore, existingVisitor?.best_score_updated_at, context.env)) {
+    return context.json({ ok: false, error: "suspicious_score" }, 422);
+  }
+
   const bestScore = Math.max(existingBestScore, score);
 
   if (bestScore !== existingBestScore) {
@@ -267,6 +318,16 @@ app.post("/scores", async (context) => {
 });
 
 app.get("/leaderboard", async (context) => {
+  const rateLimitResult = await applyRateLimit(
+    context,
+    "leaderboard",
+    getRateLimitMax(context.env.RATE_LIMIT_LEADERBOARD_MAX, 60),
+  );
+
+  if (!rateLimitResult.ok) {
+    return context.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
   const clientId = context.req.query("client_id") ?? null;
   const limit = getLeaderboardLimit(context.req.query("limit"));
   const around = context.req.query("around") === "current" ? "current" : "top";
@@ -335,6 +396,72 @@ function getLeaderboardLimit(value: string | undefined): number {
   }
 
   return Math.min(limit, 100);
+}
+
+function getRateLimitMax(value: string | undefined, fallback: number): number {
+  const parsedValue = Number(value);
+  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
+}
+
+function getRateLimitWindowSeconds(env: Bindings): number {
+  return getRateLimitMax(env.RATE_LIMIT_WINDOW_SECONDS, 60);
+}
+
+function getScoreAntiFraudWindowSeconds(env: Bindings): number {
+  return getRateLimitMax(env.SCORE_ANTI_FRAUD_WINDOW_SECONDS, 300);
+}
+
+function getScoreAntiFraudMaxDelta(env: Bindings): number {
+  return getRateLimitMax(env.SCORE_ANTI_FRAUD_MAX_DELTA, 100);
+}
+
+async function applyRateLimit(
+  context: AppContext,
+  bucket: string,
+  maxRequests: number,
+): Promise<{ ok: true } | { ok: false }> {
+  const kv = context.env.RATE_LIMIT_KV;
+  const clientIp = getRequestIp(context.req.raw);
+
+  if (!kv || !clientIp || maxRequests < 1) {
+    return { ok: true };
+  }
+
+  const windowSeconds = getRateLimitWindowSeconds(context.env);
+  const now = Date.now();
+  const windowStart = Math.floor(now / (windowSeconds * 1000));
+  const key = `rate:${bucket}:${clientIp}:${windowStart}`;
+  const currentCount = Number(await kv.get(key) ?? "0");
+
+  if (currentCount >= maxRequests) {
+    return { ok: false };
+  }
+
+  await kv.put(key, String(currentCount + 1), { expirationTtl: windowSeconds + 5 });
+  return { ok: true };
+}
+
+function isSuspiciousScoreSubmission
+(
+  score: number,
+  existingBestScore: number,
+  bestScoreUpdatedAt: string | null | undefined,
+  env: Bindings,
+): boolean {
+  if (score <= existingBestScore || existingBestScore < 1 || !bestScoreUpdatedAt) {
+    return false;
+  }
+
+  const previousUpdateTimestamp = Date.parse(bestScoreUpdatedAt);
+
+  if (Number.isNaN(previousUpdateTimestamp)) {
+    return false;
+  }
+
+  const isWithinFraudWindow =
+    Date.now() - previousUpdateTimestamp < getScoreAntiFraudWindowSeconds(env) * 1000;
+
+  return isWithinFraudWindow && score - existingBestScore > getScoreAntiFraudMaxDelta(env);
 }
 
 function parseEvents(
@@ -437,7 +564,7 @@ async function resolveVisitor(
 
 async function getVisitor(context: AppContext, visitorId: string): Promise<VisitorLookupRow | null> {
   return await context.env.DB.prepare(
-    "SELECT id, public_color_id, public_name_id, best_score FROM visitors WHERE id = ?",
+    "SELECT id, public_color_id, public_name_id, best_score, best_score_updated_at FROM visitors WHERE id = ?",
   )
     .bind(visitorId)
     .first<VisitorLookupRow>();
@@ -574,6 +701,24 @@ function getRequestIp(request: Request): string {
     request.headers.get("cf-connecting-ip") ??
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     ""
+  );
+}
+
+function resolveCorsOrigin(origin: string, env: Bindings): string | null {
+  if ((env.APP_ENV ?? "development") === "development") {
+    return origin || "*";
+  }
+
+  const allowedOrigins = parseAllowedOrigins(env.CORS_ALLOWED_ORIGINS);
+  return allowedOrigins.has(origin) ? origin : null;
+}
+
+function parseAllowedOrigins(value: string | undefined): Set<string> {
+  return new Set(
+    (value ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
   );
 }
 

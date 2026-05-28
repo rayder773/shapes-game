@@ -7,6 +7,7 @@
     "dev": "wrangler dev --local",
     "dev:production": "wrangler dev --local --env production",
     "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
     "deploy:production": "wrangler deploy --env production",
     "db:migrations:create": "wrangler d1 migrations create shapes-game-analytics-dev",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260504.0",
     "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
     "wrangler": "^4.50.0"
   }
 }
