@@ -7,6 +7,7 @@ import {
   isLeaderboardApiConfigured,
   type LeaderboardEntry,
 } from "./leaderboard-api.ts";
+import { syncBestScore } from "./best-score-sync.ts";
 
 export type LeaderboardPanel = ReturnType<typeof createLeaderboardPanel>;
 
@@ -130,7 +131,8 @@ export function createLeaderboardPanel() {
       setLoading();
 
       try {
-        const response = await fetchLeaderboard({ aroundCurrentUser: true, limit: 20 });
+        await syncBestScore();
+        const response = await fetchLeaderboard({ aroundCurrentUser: false, limit: 20 });
         renderEntries(response.entries, response.currentRank);
       } catch {
         setUnavailable();

@@ -60,6 +60,7 @@ type LeaderboardRow = {
 const defaultMaxBatchSize = 50;
 const defaultEventsPageSize = 100;
 const maxEventsPageSize = 200;
+const maxBestScore = 1_000_000;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -231,9 +232,11 @@ app.post("/scores", async (context) => {
   const clientId = isRecord(body.value) && typeof body.value.client_id === "string"
     ? body.value.client_id
     : null;
-  const score = isRecord(body.value) ? Number(body.value.score) : Number.NaN;
+  const score = isRecord(body.value) && typeof body.value.score === "number"
+    ? body.value.score
+    : Number.NaN;
 
-  if (!Number.isInteger(score) || score < 0) {
+  if (!Number.isInteger(score) || score < 0 || score > maxBestScore) {
     return context.json({ ok: false, error: "invalid_score" }, 400);
   }
 

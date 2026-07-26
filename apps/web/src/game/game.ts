@@ -30,7 +30,12 @@ import {
   type AnalyticsEventType,
   type AnalyticsPayload,
 } from "../platform/analytics-client.ts";
-import { submitLeaderboardScore } from "../leaderboard/leaderboard-api.ts";
+import {
+  readLocalBestScore,
+  saveLocalBestScore,
+  subscribeToBestScore,
+  syncBestScore,
+} from "../leaderboard/best-score-sync.ts";
 import { getCurrentRoute } from "../platform/router.ts";
 import type {
   GameReadModel,
@@ -126,7 +131,6 @@ const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.6;
 const COIN_BONUS_MULTIPLIER = 2;
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
-const BEST_SCORE_STORAGE_KEY = "shapes-game.bestScore";
 const GAME_RULES = [
   "Клик, тап или клавиши мгновенно меняют направление, скорость всегда остается постоянной.",
   "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
@@ -466,28 +470,6 @@ function areRulesAccepted(): boolean {
 
 function setRulesAccepted(): void {
   window.localStorage.setItem(RULES_STORAGE_KEY, "true");
-}
-
-function loadBestScore(): number | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const rawValue = window.localStorage.getItem(BEST_SCORE_STORAGE_KEY);
-  if (rawValue === null) {
-    return null;
-  }
-
-  const bestScore = Number(rawValue);
-  if (!Number.isFinite(bestScore) || bestScore < 0) {
-    return null;
-  }
-
-  return Math.floor(bestScore);
-}
-
-function saveBestScore(score: number): void {
-  window.localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(Math.max(0, Math.floor(score))));
 }
 
 function continueEntryOverlayFlow(): void {
@@ -954,7 +936,7 @@ function togglePauseGame(): void {
 
         if (isFirstBestScore || isNewBestScore) {
           game.bestScore = finalScore;
-          saveBestScore(finalScore);
+          saveLocalBestScore(finalScore);
         }
 
         game.lastRoundBaseScore = game.score;
@@ -971,7 +953,7 @@ function togglePauseGame(): void {
           best_score: game.lastRoundBestScore,
           is_new_best: game.lastGameOverWasNewBest,
         });
-        void submitLeaderboardScore(finalScore);
+        if (isFirstBestScore || isNewBestScore) void syncBestScore();
         game.state = "gameOver";
         clearInputState();
         clearActiveTouchInputs();
@@ -1392,7 +1374,11 @@ function togglePauseGame(): void {
     resizeCanvas();
     initializeSettingsState();
     updateGameplayProfile(true);
-    game.bestScore = loadBestScore();
+    game.bestScore = readLocalBestScore();
+    subscribeToBestScore((bestScore) => {
+      game.bestScore = bestScore;
+      renderApp();
+    });
     pwa.initialize();
 
     if (!hasStartedFrameLoop) {

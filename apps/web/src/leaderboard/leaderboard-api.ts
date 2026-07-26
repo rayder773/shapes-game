@@ -29,15 +29,33 @@ type LeaderboardApiResponse = {
   current_rank?: number | null;
 };
 
+export type CurrentPlayer = {
+  bestScore: number;
+  publicColorId: string;
+  publicNameId: string;
+};
+
+type CurrentPlayerApiResponse = {
+  ok: boolean;
+  best_score?: unknown;
+  public_color_id?: unknown;
+  public_name_id?: unknown;
+};
+
+type SubmitScoreApiResponse = {
+  ok: boolean;
+  best_score?: unknown;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
 
 export function isLeaderboardApiConfigured(): boolean {
   return apiBaseUrl.length > 0;
 }
 
-export async function ensureCurrentPlayerIdentity(): Promise<boolean> {
+export async function ensureCurrentPlayerIdentity(): Promise<CurrentPlayer | null> {
   if (!isLeaderboardApiConfigured()) {
-    return false;
+    return null;
   }
 
   try {
@@ -46,15 +64,28 @@ export async function ensureCurrentPlayerIdentity(): Promise<boolean> {
     });
     const response = await fetch(`${apiBaseUrl}/players/me?${params.toString()}`);
 
-    return response.ok;
+    if (!response.ok) return null;
+    const body = await response.json() as CurrentPlayerApiResponse;
+    if (
+      !body.ok
+      || !Number.isInteger(body.best_score)
+      || typeof body.public_color_id !== "string"
+      || typeof body.public_name_id !== "string"
+    ) return null;
+
+    return {
+      bestScore: body.best_score as number,
+      publicColorId: body.public_color_id,
+      publicNameId: body.public_name_id,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function submitLeaderboardScore(score: number): Promise<boolean> {
+export async function submitLeaderboardScore(score: number): Promise<number | null> {
   if (!isLeaderboardApiConfigured()) {
-    return false;
+    return null;
   }
 
   try {
@@ -65,13 +96,15 @@ export async function submitLeaderboardScore(score: number): Promise<boolean> {
       },
       body: JSON.stringify({
         client_id: analyticsClient.clientId,
-        score: Math.max(0, Math.floor(score)),
+        score,
       }),
     });
 
-    return response.ok;
+    if (!response.ok) return null;
+    const body = await response.json() as SubmitScoreApiResponse;
+    return body.ok && Number.isInteger(body.best_score) ? body.best_score as number : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

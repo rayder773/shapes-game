@@ -5,7 +5,7 @@ import { createDomAppUi } from "./app/dom-app-ui.ts";
 import { createDomGameUi } from "./game/dom-game-ui.ts";
 import { initializeGame } from "./game/game.ts";
 import { initializeIcons } from "./icons.ts";
-import { ensureCurrentPlayerIdentity } from "./leaderboard/leaderboard-api.ts";
+import { syncBestScore } from "./leaderboard/best-score-sync.ts";
 import { createLeaderboardPanel } from "./leaderboard/leaderboard-panel.ts";
 import { registerPwaServiceWorker } from "./platform/pwa.ts";
 import { createSettingsPage } from "./settings/settings-page.ts";
@@ -44,7 +44,10 @@ const appUi = createDomAppUi({
 document.body.append(settingsPage.element, adminPage.element, leaderboardPanel.element);
 initializeIcons();
 installAnalyticsLifecycleFlush();
-void ensureCurrentPlayerIdentity();
+void syncBestScore();
+window.addEventListener("online", () => {
+  void syncBestScore();
+});
 registerPwaServiceWorker();
 initializeGame({
   canvas: gameCanvas,
