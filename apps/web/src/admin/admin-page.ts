@@ -1,4 +1,5 @@
-import { deleteVisitor, loadVisitorEvents, loadVisitors, type EventRecord, type VisitorRecord } from "./admin-api.ts";
+import { AdminApiError, deleteVisitor, loadVisitorEvents, loadVisitors, type EventRecord, type VisitorRecord } from "./admin-api.ts";
+import { formatDateTime, getTranslations, subscribeToLocaleChange } from "../localization/localization.ts";
 
 type AdminState = {
   visitors: VisitorRecord[];
@@ -132,7 +133,7 @@ export function createAdminPage(): AdminPageController {
   async function deleteSelectedVisitor(visitorId: string): Promise<void> {
     const visitor = state.visitors.find((item) => item.id === visitorId);
     const confirmed = window.confirm(
-      `Удалить пользователя ${visitor ? shortId(visitor.id) : visitorId} и все его события?`,
+      getTranslations().admin.confirmDelete(visitor ? shortId(visitor.id) : visitorId),
     );
 
     if (!confirmed) {
@@ -163,15 +164,16 @@ export function createAdminPage(): AdminPageController {
   }
 
   function render(): void {
+    const text = getTranslations();
     root.innerHTML = `
       <section class="admin-shell" aria-labelledby="admin-title">
         <header class="admin-header">
           <div>
-            <p class="admin-eyebrow">Shapes Game</p>
-            <h1 id="admin-title">Админка</h1>
+            <p class="admin-eyebrow">${text.admin.brand}</p>
+            <h1 id="admin-title">${text.admin.title}</h1>
           </div>
           <button class="admin-button" type="button" data-admin-refresh ${state.isLoadingVisitors ? "disabled" : ""}>
-            ${state.isLoadingVisitors ? "Загрузка" : "Обновить"}
+            ${state.isLoadingVisitors ? text.admin.loading : text.admin.refresh}
           </button>
         </header>
 
@@ -180,20 +182,20 @@ export function createAdminPage(): AdminPageController {
         <div class="admin-grid">
           <section class="admin-panel" aria-labelledby="admin-users-title">
             <div class="admin-section-header">
-              <h2 id="admin-users-title">Пользователи</h2>
+              <h2 id="admin-users-title">${text.admin.users}</h2>
               <span>${state.visitors.length}</span>
             </div>
             <div class="admin-table-wrap">
               <table class="admin-table">
                 <thead>
                   <tr>
-                    <th>Пользователь</th>
-                    <th>IP</th>
-                    <th>User-Agent</th>
-                    <th>События</th>
-                    <th>Последняя активность</th>
-                    <th>Создан</th>
-                    <th>Действия</th>
+                    <th>${text.admin.user}</th>
+                    <th>${text.admin.ip}</th>
+                    <th>${text.admin.userAgent}</th>
+                    <th>${text.admin.events}</th>
+                    <th>${text.admin.lastActivity}</th>
+                    <th>${text.admin.created}</th>
+                    <th>${text.admin.actions}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,17 +207,17 @@ export function createAdminPage(): AdminPageController {
 
           <section class="admin-panel" aria-labelledby="admin-events-title">
             <div class="admin-section-header">
-              <h2 id="admin-events-title">События</h2>
+              <h2 id="admin-events-title">${text.admin.events}</h2>
               <span>${state.events.length}${state.hasMoreEvents ? "+" : ""}</span>
             </div>
             <div class="admin-table-wrap admin-events-wrap" data-admin-events-scroll>
               <table class="admin-table admin-events-table">
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Тип</th>
-                    <th>Время клиента</th>
-                    <th>Payload</th>
+                    <th>${text.admin.id}</th>
+                    <th>${text.admin.type}</th>
+                    <th>${text.admin.clientTime}</th>
+                    <th>${text.admin.payload}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -274,12 +276,13 @@ export function createAdminPage(): AdminPageController {
   }
 
   function renderVisitorRows(): string {
+    const text = getTranslations();
     if (state.isLoadingVisitors && !state.hasLoaded) {
-      return '<tr><td colspan="7" class="admin-empty">Загружаем пользователей...</td></tr>';
+      return `<tr><td colspan="7" class="admin-empty">${text.admin.loadingUsers}</td></tr>`;
     }
 
     if (state.visitors.length === 0) {
-      return '<tr><td colspan="7" class="admin-empty">Пользователей пока нет.</td></tr>';
+      return `<tr><td colspan="7" class="admin-empty">${text.admin.noUsers}</td></tr>`;
     }
 
     return state.visitors
@@ -293,10 +296,10 @@ export function createAdminPage(): AdminPageController {
               <strong>${escapeHtml(shortId(visitor.id))}</strong>
               <span class="admin-table-meta">${escapeHtml(visitor.id)}</span>
             </td>
-            <td>${escapeHtml(visitor.ip || "нет IP")}</td>
-            <td class="admin-user-agent">${escapeHtml(visitor.user_agent || "нет user-agent")}</td>
+            <td>${escapeHtml(visitor.ip || text.admin.noIp)}</td>
+            <td class="admin-user-agent">${escapeHtml(visitor.user_agent || text.admin.noUserAgent)}</td>
             <td>${visitor.events_count}</td>
-            <td>${escapeHtml(visitor.last_event_at ? formatDateTime(visitor.last_event_at) : "нет событий")}</td>
+            <td>${escapeHtml(visitor.last_event_at ? formatDateTime(visitor.last_event_at) : text.admin.noEvents)}</td>
             <td>${escapeHtml(formatDateTime(visitor.created_at))}</td>
             <td>
               <button
@@ -305,7 +308,7 @@ export function createAdminPage(): AdminPageController {
                 data-admin-delete-visitor="${escapeHtml(visitor.id)}"
                 ${isDeleting ? "disabled" : ""}
               >
-                ${isDeleting ? "Удаляем" : "Удалить"}
+                ${isDeleting ? text.admin.deleting : text.admin.delete}
               </button>
             </td>
           </tr>
@@ -316,16 +319,17 @@ export function createAdminPage(): AdminPageController {
   }
 
   function renderEventRows(): string {
+    const text = getTranslations();
     if (!state.selectedVisitorId) {
-      return '<tr><td colspan="4" class="admin-empty">Выберите пользователя.</td></tr>';
+      return `<tr><td colspan="4" class="admin-empty">${text.admin.selectUser}</td></tr>`;
     }
 
     if (state.isLoadingEvents) {
-      return '<tr><td colspan="4" class="admin-empty">Загружаем события...</td></tr>';
+      return `<tr><td colspan="4" class="admin-empty">${text.admin.loadingEvents}</td></tr>`;
     }
 
     if (state.events.length === 0) {
-      return '<tr><td colspan="4" class="admin-empty">У пользователя пока нет событий.</td></tr>';
+      return `<tr><td colspan="4" class="admin-empty">${text.admin.userHasNoEvents}</td></tr>`;
     }
 
     return state.events
@@ -343,26 +347,28 @@ export function createAdminPage(): AdminPageController {
   }
 
   function renderEventsPagingRow(): string {
+    const text = getTranslations();
     if (!state.selectedVisitorId || state.isLoadingEvents) {
       return "";
     }
 
     if (state.isLoadingMoreEvents) {
-      return '<tr><td colspan="4" class="admin-empty">Загружаем еще события...</td></tr>';
+      return `<tr><td colspan="4" class="admin-empty">${text.admin.loadingMoreEvents}</td></tr>`;
     }
 
     if (state.hasMoreEvents) {
-      return '<tr><td colspan="4" class="admin-empty">Прокрутите ниже, чтобы загрузить еще.</td></tr>';
+      return `<tr><td colspan="4" class="admin-empty">${text.admin.scrollForMore}</td></tr>`;
     }
 
     if (state.events.length > 0) {
-      return '<tr><td colspan="4" class="admin-empty">Все события загружены.</td></tr>';
+      return `<tr><td colspan="4" class="admin-empty">${text.admin.allEventsLoaded}</td></tr>`;
     }
 
     return "";
   }
 
   render();
+  subscribeToLocaleChange(() => render());
 
   return {
     element: root,
@@ -378,19 +384,10 @@ export function createAdminPage(): AdminPageController {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Неизвестная ошибка";
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
+  if (error instanceof AdminApiError) {
+    return getTranslations().admin.error[error.code];
   }
-
-  return new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "short",
-    timeStyle: "medium",
-  }).format(date);
+  return error instanceof Error ? error.message : getTranslations().admin.unknownError;
 }
 
 function shortId(value: string): string {

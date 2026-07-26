@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import ru from "./src/localization/ru.ts";
 
 const base = "/shapes-game/";
 
@@ -16,9 +17,9 @@ export default defineConfig({
         "apple-touch-icon.png",
       ],
       manifest: {
-        name: "AntiMatch",
-        short_name: "AntiMatch",
-        description: "Аркада на реакцию, где можно поглощать только фигуры, отличающиеся по всем свойствам.",
+        name: ru.app.name,
+        short_name: ru.app.name,
+        description: ru.app.manifestDescription,
         lang: "ru",
         start_url: base,
         scope: base,

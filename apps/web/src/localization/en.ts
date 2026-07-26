@@ -1,0 +1,83 @@
+const en = {
+  app: {
+    name: "AntiMatch",
+    manifestDescription: "A reaction arcade game where you can only consume shapes that differ in every property.",
+  },
+  locale: { ru: "Русский", en: "English" },
+  action: {
+    ok: "Got it", resume: "Resume", settings: "Settings", restart: "Restart",
+    leaderboard: "Leaderboard", install: "Install", notNow: "Not now",
+  },
+  game: {
+    hud: {
+      score: (score: number) => `Score: ${score}`,
+      coins: "Coins:",
+      coinsAria: (coins: number) => `Coins: ${coins}`,
+      livesAria: (lives: number, maxLives: number) => `Lives: ${lives} of ${maxLives}`,
+      best: "Best",
+      bestAria: (score: number) => `Best score: ${score}`,
+    },
+    pause: {
+      openAria: "Pause game", resumeAria: "Resume game", title: "Paused",
+      autoMessage: "The game has been paused.",
+    },
+    rules: {
+      title: "How to play",
+      first: "A click, tap, or key press instantly changes direction while speed always stays constant.",
+      second: "You can only consume shapes that differ in all three properties.",
+      third: "If even one property matches, you lose a life. The run ends when you run out of lives.",
+    },
+    results: {
+      title: "Results", baseScore: "Base score", coins: "Coins", bonus: "Bonus ×2",
+      finalScore: "Final score", best: "Best: ", newBest: "New best!",
+    },
+  },
+  settings: {
+    title: "Settings", mobileProfile: "Editing the active mobile profile.",
+    desktopProfile: "Editing the active desktop profile.", language: "Language",
+    targetSpeed: "Shape speed", playerSpeed: "Player speed", playerBoostSpeed: "Boost speed",
+    maxTargets: "Maximum shapes", targetGrowthScoreStep: "Shape increase step",
+    lifeSpawnChancePercent: "Life spawn chance", coinSpawnChancePercent: "Coin spawn chance",
+    lifePickupLifetimeSeconds: "Life pickup lifetime", coinPickupLifetimeSeconds: "Coin pickup lifetime",
+    startLives: "Starting lives", maxLives: "Maximum lives",
+    seconds: (value: number) => `${value} sec`, reset: "Reset to defaults", save: "Save and start game",
+  },
+  leaderboard: {
+    title: "Leaderboard", closeAria: "Close leaderboard", loading: "Loading...",
+    loadFailed: "Could not load the leaderboard.",
+    notConfigured: "The leaderboard will be available after the API is connected.",
+    empty: "No results yet. Finish a round to join the leaderboard.",
+    noNeighbors: "There are no nearby results yet.", bestResults: "Best results",
+    currentRank: (rank: number) => `Your rank: #${rank}`, you: "You",
+  },
+  pwa: {
+    postGameMessage: "Install AntiMatch to jump into a new match with one tap and play without extra browser controls.",
+    pauseMessage: "Install the game to launch it as a standalone app and return to a match faster.",
+    postGameTipOne: "Opens as a standalone app.",
+    postGameTipTwo: "After the first launch, the match is available offline.",
+    pauseTipOne: "Runs as a standalone app without the address bar.",
+    pauseTipTwo: "After the first launch, the game opens offline.",
+    iosMessage: "On iPhone, install from Safari: open the Share menu and choose “Add to Home Screen”.",
+    iosTipOne: "Open the game in Safari.", iosTipTwo: "Tap Share.",
+    iosTipThree: "Choose “Add to Home Screen”.", howToInstall: "How to install",
+    iosInlineMessage: "Add the game to your Home Screen and launch it like an app.",
+    installInlineMessage: "Install the game and return to the next match with one tap.",
+  },
+  admin: {
+    title: "Admin", brand: "Shapes Game", refresh: "Refresh", loading: "Loading",
+    users: "Users", user: "User", events: "Events", lastActivity: "Last activity",
+    created: "Created", actions: "Actions", type: "Type", clientTime: "Client time",
+    ip: "IP", userAgent: "User-Agent", id: "ID", payload: "Payload",
+    confirmDelete: (user: string) => `Delete user ${user} and all of their events?`,
+    loadingUsers: "Loading users...", noUsers: "There are no users yet.", noIp: "no IP",
+    noUserAgent: "no user-agent", noEvents: "no events", deleting: "Deleting", delete: "Delete",
+    selectUser: "Select a user.", loadingEvents: "Loading events...",
+    userHasNoEvents: "This user has no events yet.", loadingMoreEvents: "Loading more events...",
+    scrollForMore: "Scroll down to load more.", allEventsLoaded: "All events are loaded.",
+    unknownError: "Unknown error",
+    error: { loadUsers: "Could not load users", loadEvents: "Could not load user events", deleteUser: "Could not delete user" },
+  },
+};
+
+export default en;
+export type EnglishTranslations = typeof en;

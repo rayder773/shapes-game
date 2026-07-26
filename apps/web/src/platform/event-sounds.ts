@@ -39,7 +39,7 @@ export function installEventSounds(
     audio.preload = "auto";
     audio.volume = sound.volume ?? 1;
     audio.playbackRate = sound.playbackRate ?? 1;
-    void audio.play().catch(() => {
+    void Promise.resolve(audio.play()).catch(() => {
       // Browsers may reject playback until the first user gesture.
     });
   });

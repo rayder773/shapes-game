@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <title>AntiMatch</title>
+    <title></title>
     <meta name="theme-color" content="#09111d" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="icon" href="%BASE_URL%favicon.ico" sizes="any" />
@@ -739,6 +739,16 @@
         accent-color: var(--accent);
       }
 
+      .settings-language-select {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid var(--panel-border);
+        border-radius: 12px;
+        color: var(--text);
+        background: #111c2b;
+        font: inherit;
+      }
+
       .settings-actions {
         display: flex;
         justify-content: flex-end;
@@ -1051,68 +1061,68 @@
       <div class="hud-panel">
         <div class="hud-stats">
           <div class="hud-row">
-            <p id="hud-score" class="hud-score">Счет: 0</p>
-            <div id="hud-coins" class="hud-coins" aria-label="Монеты: 0">
-              <span class="hud-coin-label">Монеты:</span>
+            <p id="hud-score" class="hud-score"></p>
+            <div id="hud-coins" class="hud-coins">
+              <span id="hud-coin-label" class="hud-coin-label"></span>
               <span id="hud-coins-value" class="hud-coin-value">0</span>
               <span class="hud-coin-icon" data-coin-icon aria-hidden="true"></span>
             </div>
           </div>
           <div class="hud-row">
-            <div id="hud-lives" class="hud-lives" aria-label="Жизни: 3 из 5"></div>
-            <div id="hud-best" class="hud-best" aria-label="Лучший счет: 0">
-              <span class="hud-best-label">Рекорд</span>
+            <div id="hud-lives" class="hud-lives"></div>
+            <div id="hud-best" class="hud-best">
+              <span id="hud-best-label" class="hud-best-label"></span>
               <span id="hud-best-value" class="hud-best-value">0</span>
             </div>
           </div>
         </div>
       </div>
-      <button id="pause-button" class="icon-button" type="button" aria-label="Поставить игру на паузу">II</button>
+      <button id="pause-button" class="icon-button" type="button">II</button>
     </div>
 
     <div id="overlay" class="overlay" aria-hidden="true">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
-        <h1 id="overlay-title">Пауза</h1>
-        <p id="overlay-message">Счет: 0</p>
+        <h1 id="overlay-title"></h1>
+        <p id="overlay-message"></p>
         <section id="results-screen" class="results-screen" hidden aria-live="polite">
           <div class="results-grid">
             <div id="results-base-row" class="results-row">
-              <span class="results-row-label">Базовый счет</span>
+              <span id="results-base-label" class="results-row-label"></span>
               <strong id="results-base-value" class="results-row-value">0</strong>
             </div>
             <div id="results-coins-row" class="results-row is-accent">
               <span class="results-row-label">
                 <span class="hud-coin-icon" data-coin-icon aria-hidden="true"></span>
-                Монеты
+                <span id="results-coins-label"></span>
               </span>
               <strong id="results-coins-value" class="results-row-value is-coin">0</strong>
             </div>
             <div id="results-bonus-row" class="results-row is-accent">
-              <span class="results-row-label">Бонус ×2</span>
+              <span id="results-bonus-label" class="results-row-label"></span>
               <strong id="results-bonus-value" class="results-row-value is-coin">+0</strong>
               <div id="results-burst" class="results-burst" aria-hidden="true"></div>
             </div>
           </div>
           <div id="results-final-card" class="results-final">
-            <div class="results-final-label">Итоговый результат</div>
+            <div id="results-final-label" class="results-final-label"></div>
             <div id="results-final-value" class="results-final-value">0</div>
           </div>
           <div id="results-meta" class="results-meta">
-            <div class="results-best">Рекорд: <strong id="results-best-value">0</strong></div>
-            <div id="results-record-badge" class="results-record-badge" hidden>Новый рекорд!</div>
+            <div class="results-best"><span id="results-best-label"></span><strong id="results-best-value">0</strong></div>
+            <div id="results-record-badge" class="results-record-badge" hidden></div>
           </div>
         </section>
         <ul id="overlay-tips" class="overlay-tips" hidden></ul>
         <div class="modal-actions">
-          <button id="overlay-primary-button" type="button">Продолжить</button>
-          <button id="overlay-install-button" class="secondary" type="button" hidden>Установить</button>
-          <button id="overlay-secondary-button" class="secondary" type="button" hidden>Начать заново</button>
-          <button id="overlay-tertiary-button" class="secondary" type="button" hidden>Начать заново</button>
-          <button id="overlay-quaternary-button" class="secondary" type="button" hidden>Топ игроков</button>
+          <button id="overlay-primary-button" type="button"></button>
+          <button id="overlay-install-button" class="secondary" type="button" hidden></button>
+          <button id="overlay-secondary-button" class="secondary" type="button" hidden></button>
+          <button id="overlay-tertiary-button" class="secondary" type="button" hidden></button>
+          <button id="overlay-quaternary-button" class="secondary" type="button" hidden></button>
         </div>
         <div id="overlay-footer" class="modal-footer" hidden>
           <p id="overlay-footer-message"></p>
-          <button id="overlay-footer-button" class="secondary" type="button">Установить</button>
+          <button id="overlay-footer-button" class="secondary" type="button"></button>
         </div>
       </div>
     </div>

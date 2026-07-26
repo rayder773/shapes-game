@@ -98,6 +98,7 @@ import {
   type SettingsEntity,
 } from "./game-runtime.ts";
 import type { GameEventBus, GameEventType } from "./game-events.ts";
+import { getTranslations } from "../localization/localization.ts";
 
 type FullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -130,11 +131,10 @@ const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.6;
 const COIN_BONUS_MULTIPLIER = 2;
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
-const GAME_RULES = [
-  "Клик, тап или клавиши мгновенно меняют направление, скорость всегда остается постоянной.",
-  "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
-  "Если совпадает хотя бы одно свойство, теряется жизнь. Забег заканчивается, когда жизни кончаются.",
-];
+function getGameRules(): string[] {
+  const { rules } = getTranslations().game;
+  return [rules.first, rules.second, rules.third];
+}
 let canvas: HTMLCanvasElement;
 let ctx: CanvasRenderingContext2D;
 let canvasRenderer: CanvasRenderer;
@@ -198,7 +198,7 @@ export function getGameReadModel(): GameReadModel {
     settings: getSettingsReadModel(),
     overlay: {
       mode: overlayMode,
-      rules: GAME_RULES,
+      rules: getGameRules(),
       lastPauseWasAutoPaused,
       activeInstallOverlay: pwa.getActiveOverlayModel(),
       pauseInstallButton: pwa.getPauseInstallButtonState(),

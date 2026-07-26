@@ -12,6 +12,7 @@ import { createSettingsPage } from "./settings/settings-page.ts";
 import { createGameEventBus } from "./game/game-events.ts";
 import { installEventSounds } from "./platform/event-sounds.ts";
 import { EVENT_SOUNDS } from "./platform/event-sounds.config.ts";
+import { initializeLocale } from "./localization/localization.ts";
 
 function getGameCanvas(): HTMLCanvasElement {
   const canvas = document.getElementById("game");
@@ -30,6 +31,8 @@ function getGameCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext
 
   return context;
 }
+
+initializeLocale();
 
 const settingsPage = createSettingsPage();
 const adminPage = createAdminPage();

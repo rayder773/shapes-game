@@ -8,6 +8,7 @@ import {
   type LeaderboardEntry,
 } from "./leaderboard-api.ts";
 import { syncBestScore } from "./best-score-sync.ts";
+import { formatNumber, getTranslations, subscribeToLocaleChange } from "../localization/localization.ts";
 
 export type LeaderboardPanel = ReturnType<typeof createLeaderboardPanel>;
 
@@ -28,13 +29,11 @@ export function createLeaderboardPanel() {
 
   const title = document.createElement("h2");
   title.id = "leaderboard-title";
-  title.textContent = "Топ игроков";
 
   const closeButton = document.createElement("button");
   closeButton.className = "leaderboard-close";
   closeButton.type = "button";
   closeButton.textContent = "×";
-  closeButton.setAttribute("aria-label", "Закрыть таблицу лидеров");
 
   const status = document.createElement("p");
   status.className = "leaderboard-status";
@@ -47,6 +46,15 @@ export function createLeaderboardPanel() {
   panel.append(header, status, list);
   root.append(panel);
 
+  function renderStaticText(): void {
+    const text = getTranslations();
+    title.textContent = text.leaderboard.title;
+    closeButton.setAttribute("aria-label", text.leaderboard.closeAria);
+  }
+
+  renderStaticText();
+  subscribeToLocaleChange(renderStaticText);
+
   function close(): void {
     root.hidden = true;
     root.setAttribute("aria-hidden", "true");
@@ -54,30 +62,32 @@ export function createLeaderboardPanel() {
   }
 
   function setLoading(): void {
-    status.textContent = "Загрузка...";
+    status.textContent = getTranslations().leaderboard.loading;
     list.replaceChildren();
   }
 
   function setUnavailable(): void {
+    const text = getTranslations();
     status.textContent = isLeaderboardApiConfigured()
-      ? "Не удалось загрузить топ игроков."
-      : "Топ игроков будет доступен после подключения API.";
+      ? text.leaderboard.loadFailed
+      : text.leaderboard.notConfigured;
     list.replaceChildren();
   }
 
   function renderEntries(entries: LeaderboardEntry[], currentRank: number | null): void {
+    const text = getTranslations();
     list.replaceChildren();
 
     if (entries.length === 0) {
       status.textContent = currentRank === null
-        ? "Пока нет результатов. Заверши раунд, чтобы попасть в топ."
-        : "Пока нет соседних результатов.";
+        ? text.leaderboard.empty
+        : text.leaderboard.noNeighbors;
       return;
     }
 
     status.textContent = currentRank === null
-      ? "Лучшие результаты"
-      : `Твоя позиция: #${currentRank}`;
+      ? text.leaderboard.bestResults
+      : text.leaderboard.currentRank(currentRank);
 
     for (const entry of entries) {
       const row = document.createElement("div");
@@ -96,7 +106,7 @@ export function createLeaderboardPanel() {
       const name = document.createElement("span");
       name.className = "leaderboard-name";
       name.textContent = entry.isCurrentUser
-        ? `You · ${formatPlayerPublicName({
+        ? `${text.leaderboard.you} · ${formatPlayerPublicName({
           publicColorId: entry.publicColorId,
           publicNameId: entry.publicNameId,
         })}`
@@ -107,7 +117,7 @@ export function createLeaderboardPanel() {
 
       const score = document.createElement("strong");
       score.className = "leaderboard-score";
-      score.textContent = entry.score.toLocaleString("ru-RU");
+      score.textContent = formatNumber(entry.score);
 
       row.append(rank, marker, name, score);
       list.append(row);

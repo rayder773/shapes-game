@@ -20,6 +20,7 @@ import {
   updateSettingsDraft,
 } from "../settings/settings-controller.ts";
 import type { SettingsPageController } from "../settings/settings-page.ts";
+import { setLocale, subscribeToLocaleChange } from "../localization/localization.ts";
 
 type AppControllerDependencies = {
   appUi: DomAppUi;
@@ -49,6 +50,11 @@ export function initializeAppController({
   }
 
   settingsPage.subscribe((event) => {
+    if (event.type === "language-change") {
+      setLocale(event.locale);
+      return;
+    }
+
     if (event.type === "settings-change") {
       updateSettingsDraft(event.field, event.value);
       renderAppUi();
@@ -70,6 +76,10 @@ export function initializeAppController({
   });
 
   subscribeToSettingsState(() => {
+    renderAppUi();
+  });
+
+  subscribeToLocaleChange(() => {
     renderAppUi();
   });
 

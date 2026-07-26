@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, vi } from "vitest";
+import { initializeLocale } from "../src/localization/localization.ts";
 
 type CanvasCall = {
   method: string;
@@ -35,6 +36,7 @@ let viewportHeight = 720;
 let coarsePointer = false;
 let hoverNone = false;
 let standaloneMode = false;
+let deviceLanguages: readonly string[] = ["ru-RU"];
 let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
 class CanvasRenderingContext2DMock {
@@ -132,6 +134,9 @@ Object.defineProperty(globalThis, "__ANTI_MATCH_TEST_INTERNALS__", {
     },
     setStandaloneMode(value: boolean) {
       standaloneMode = value;
+    },
+    setDeviceLanguages(languages: readonly string[]) {
+      deviceLanguages = languages;
     },
     dispatchViewportEvent(type: string) {
       viewportTarget.dispatchEvent(new Event(type));
@@ -234,6 +239,16 @@ Object.defineProperty(navigator, "standalone", {
   get: () => standaloneMode,
 });
 
+Object.defineProperty(navigator, "languages", {
+  configurable: true,
+  get: () => deviceLanguages,
+});
+
+Object.defineProperty(navigator, "language", {
+  configurable: true,
+  get: () => deviceLanguages[0] ?? "en-US",
+});
+
 Object.defineProperty(window, "innerWidth", {
   configurable: true,
   get: () => viewportWidth,
@@ -286,11 +301,17 @@ Object.defineProperty(HTMLCanvasElement.prototype, "getBoundingClientRect", {
   },
 });
 
+Object.defineProperty(HTMLMediaElement.prototype, "play", {
+  configurable: true,
+  value: vi.fn(async () => {}),
+});
+
 beforeEach(() => {
   nowMs = 0;
   coarsePointer = false;
   hoverNone = false;
   standaloneMode = false;
+  deviceLanguages = ["ru-RU"];
   userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
   viewportWidth = 1280;
   viewportHeight = 720;
@@ -298,6 +319,7 @@ beforeEach(() => {
   listenerRecords.length = 0;
   window.localStorage.clear();
   window.sessionStorage.clear();
+  initializeLocale();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-05-02T12:00:00.000Z"));
   vi.spyOn(performance, "now").mockImplementation(() => nowMs);
