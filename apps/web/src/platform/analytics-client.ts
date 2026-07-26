@@ -1,13 +1,6 @@
-export type AnalyticsEventType =
-  | "game.round_started"
-  | "game.round_paused"
-  | "game.round_resumed"
-  | "game.round_restarted"
-  | "game.target_consumed"
-  | "game.life_lost"
-  | "game.life_collected"
-  | "game.coin_collected"
-  | "game.game_over";
+import type { GameEventType } from "../game/game-events.ts";
+
+export type AnalyticsEventType = GameEventType;
 
 export type AnalyticsPayload = Record<string, unknown>;
 

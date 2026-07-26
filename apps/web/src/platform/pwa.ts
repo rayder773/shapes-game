@@ -1,5 +1,6 @@
 import { registerSW } from "virtual:pwa-register";
 import { isPhoneDevice } from "./device.ts";
+import { getTranslations } from "../localization/localization.ts";
 
 const SW_RELOAD_SESSION_KEY = "anti-match.swControllerReloaded";
 const INSTALL_PROMPT_DISMISS_COUNT_KEY = "anti-match.installPromptDismissCount";
@@ -183,56 +184,58 @@ export function createPwaController(): PwaController {
   }
 
   function createOverlayModel(variant: InstallOverlayVariant, surface: InstallSurface): PwaInstallOverlayModel {
+    const text = getTranslations();
     if (variant === "prompt") {
       return {
         variant,
         surface,
-        title: "AntiMatch",
+        title: text.app.name,
         message:
           surface === "postGameOver"
-            ? "Установите AntiMatch, чтобы возвращаться в новый матч в один тап и играть без лишней браузерной обвязки."
-            : "Установите игру, чтобы запускать ее как отдельное приложение и быстрее возвращаться в матч.",
+            ? text.pwa.postGameMessage
+            : text.pwa.pauseMessage,
         tips:
           surface === "postGameOver"
             ? [
-                "Открывается как отдельное приложение.",
-                "После первого запуска матч доступен даже без сети.",
+                text.pwa.postGameTipOne,
+                text.pwa.postGameTipTwo,
               ]
             : [
-                "Работает как отдельное приложение без адресной строки.",
-                "После первого запуска игра открывается даже без сети.",
+                text.pwa.pauseTipOne,
+                text.pwa.pauseTipTwo,
               ],
-        primaryLabel: "Установить",
-        secondaryLabel: "Не сейчас",
+        primaryLabel: text.action.install,
+        secondaryLabel: text.action.notNow,
       };
     }
 
     return {
       variant,
       surface,
-      title: "AntiMatch",
-      message: "На iPhone установка работает через Safari: откройте меню Поделиться и выберите «На экран Домой».",
+      title: text.app.name,
+      message: text.pwa.iosMessage,
       tips: [
-        "Откройте игру именно в Safari.",
-        "Нажмите Поделиться.",
-        "Выберите «На экран Домой» / Add to Home Screen.",
+        text.pwa.iosTipOne,
+        text.pwa.iosTipTwo,
+        text.pwa.iosTipThree,
       ],
-      primaryLabel: "Понятно",
+      primaryLabel: text.action.ok,
       secondaryLabel: null,
     };
   }
 
   function createInlineInstallPrompt(variant: InstallOverlayVariant): PwaInlineInstallPrompt {
+    const text = getTranslations();
     if (variant === "iosHint") {
       return {
-        buttonLabel: "Как установить",
-        message: "Можно добавить игру на экран Домой и запускать ее как приложение.",
+        buttonLabel: text.pwa.howToInstall,
+        message: text.pwa.iosInlineMessage,
       };
     }
 
     return {
-      buttonLabel: "Установить",
-      message: "Можно установить игру и возвращаться в следующий матч одним тапом.",
+      buttonLabel: text.action.install,
+      message: text.pwa.installInlineMessage,
     };
   }
 
@@ -299,7 +302,7 @@ export function createPwaController(): PwaController {
     getPauseInstallButtonState(): { visible: boolean; label: string } {
       return {
         visible: canShowInstallCta(),
-        label: "Установить",
+        label: getTranslations().action.install,
       };
     },
 

@@ -26,9 +26,6 @@ import {
   flushAnalyticsEvents,
   getAnalyticsSessionId,
   startAnalyticsRound,
-  trackAnalyticsEvent,
-  type AnalyticsEventType,
-  type AnalyticsPayload,
 } from "../platform/analytics-client.ts";
 import {
   readLocalBestScore,
@@ -100,6 +97,8 @@ import {
   type PlayerEntity,
   type SettingsEntity,
 } from "./game-runtime.ts";
+import type { GameEventBus, GameEventType } from "./game-events.ts";
+import { getTranslations } from "../localization/localization.ts";
 
 type FullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -119,6 +118,7 @@ export type GameDomDependencies = {
   ui: DomGameUi;
   rootStyle: CSSStyleDeclaration;
   openLeaderboard?: OpenLeaderboardListener;
+  events?: GameEventBus;
 };
 
 const SCALE = 30;
@@ -131,17 +131,17 @@ const LINEAR_DAMPING = 0;
 const ANGULAR_DAMPING = 0.6;
 const COIN_BONUS_MULTIPLIER = 2;
 const RULES_STORAGE_KEY = "shapes-game.rulesAccepted";
-const GAME_RULES = [
-  "Клик, тап или клавиши мгновенно меняют направление, скорость всегда остается постоянной.",
-  "Съедать можно только фигуры, которые отличаются по всем трем свойствам.",
-  "Если совпадает хотя бы одно свойство, теряется жизнь. Забег заканчивается, когда жизни кончаются.",
-];
+function getGameRules(): string[] {
+  const { rules } = getTranslations().game;
+  return [rules.first, rules.second, rules.third];
+}
 let canvas: HTMLCanvasElement;
 let ctx: CanvasRenderingContext2D;
 let canvasRenderer: CanvasRenderer;
 let ui: DomGameUi;
 let rootStyle: CSSStyleDeclaration;
 let openLeaderboardListener: OpenLeaderboardListener | null = null;
+let gameEvents: GameEventBus | null = null;
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
 const game = createRuntime({
@@ -198,7 +198,7 @@ export function getGameReadModel(): GameReadModel {
     settings: getSettingsReadModel(),
     overlay: {
       mode: overlayMode,
-      rules: GAME_RULES,
+      rules: getGameRules(),
       lastPauseWasAutoPaused,
       activeInstallOverlay: pwa.getActiveOverlayModel(),
       pauseInstallButton: pwa.getPauseInstallButtonState(),
@@ -218,7 +218,7 @@ function getRoundElapsedMs(): number {
   return Math.max(0, Math.round(performance.now() - game.roundStartedAt));
 }
 
-function getSharedAnalyticsPayload(): AnalyticsPayload {
+function getSharedAnalyticsPayload(): Record<string, unknown> {
   const profile = getGameplayProfile();
 
   return {
@@ -234,11 +234,12 @@ function getSharedAnalyticsPayload(): AnalyticsPayload {
   };
 }
 
-function trackGameplayEvent(type: AnalyticsEventType, payload: AnalyticsPayload = {}): void {
-  trackAnalyticsEvent(type, {
+function trackGameplayEvent(type: GameEventType, payload: Record<string, unknown> = {}): void {
+  const eventPayload = {
     ...getSharedAnalyticsPayload(),
     ...payload,
-  });
+  };
+  gameEvents?.publish({ type, payload: eventPayload });
 }
 
 function updateGameplayProfile(resetDraft = false): void {
@@ -1363,6 +1364,7 @@ function togglePauseGame(): void {
     ui = dependencies.ui;
     rootStyle = dependencies.rootStyle;
     openLeaderboardListener = dependencies.openLeaderboard ?? null;
+    gameEvents = dependencies.events ?? null;
     configureSettingsController({
       getSettingsEntity,
       onPersistActiveProfileSettings() {

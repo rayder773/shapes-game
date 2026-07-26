@@ -15,6 +15,7 @@ import type {
   Runtime,
   SettingsEntity,
 } from "./game-runtime.ts";
+import { getTranslations } from "../localization/localization.ts";
 
 export type GameReadModelRuntime = Pick<
   Runtime,
@@ -124,14 +125,15 @@ export function createOverlayView(
   runtime: GameReadModelRuntime,
   context: GameReadModelOverlayContext,
 ): GameReadModelOverlayView | null {
+  const text = getTranslations();
   if (context.mode === "onboarding") {
     return {
       layout: "modal",
       variant: "default",
-      title: "Правила",
+      title: text.game.rules.title,
       message: "",
       tips: context.rules,
-      buttons: [{ label: "Понятно", action: "acceptOnboarding" }],
+      buttons: [{ label: text.action.ok, action: "acceptOnboarding" }],
       installButton: null,
       footerPrompt: null,
       results: null,
@@ -142,14 +144,14 @@ export function createOverlayView(
     return {
       layout: "modal",
       variant: "default",
-      title: "Пауза",
-      message: context.lastPauseWasAutoPaused ? "Игра остановлена." : "",
+      title: text.game.pause.title,
+      message: context.lastPauseWasAutoPaused ? text.game.pause.autoMessage : "",
       tips: context.rules,
       buttons: [
-        { label: "Продолжить", action: "resume" },
-        { label: "Настройки", action: "openSettings" },
-        { label: "Начать заново", action: "restart" },
-        { label: "Топ игроков", action: "openLeaderboard" },
+        { label: text.action.resume, action: "resume" },
+        { label: text.action.settings, action: "openSettings" },
+        { label: text.action.restart, action: "restart" },
+        { label: text.action.leaderboard, action: "openLeaderboard" },
       ],
       installButton: context.pauseInstallButton.visible
         ? { label: context.pauseInstallButton.label, surface: "pause" }
@@ -164,12 +166,12 @@ export function createOverlayView(
     return {
       layout: "modal",
       variant: runtime.lastGameOverWasNewBest ? "results-record" : "results",
-      title: "Результаты",
+      title: text.game.results.title,
       message: "",
       tips: [],
       buttons: [
-        { label: "Начать заново", action: "restart" },
-        { label: "Топ игроков", action: "openLeaderboard" },
+        { label: text.action.restart, action: "restart" },
+        { label: text.action.leaderboard, action: "openLeaderboard" },
       ],
       installButton: null,
       footerPrompt: runtime.gameOverInstallPrompt

@@ -1,6 +1,7 @@
 import type { AppReadModel } from "../app/app-read-model.ts";
 import type { GameReadModelOverlayAction, GameReadModelOverlayView } from "./game-read-model.ts";
 import { createLifeIconSvgMarkup } from "../icons.ts";
+import { getTranslations } from "../localization/localization.ts";
 
 export type DomGameUiEvent =
   | { type: "pause-toggle" }
@@ -30,8 +31,10 @@ export function createDomGameUi() {
   const canvas = requireElement("game", HTMLCanvasElement, "Canvas element");
   const hudScore = requireElement("hud-score", HTMLParagraphElement, "HUD score element");
   const hudBest = requireElement("hud-best", HTMLDivElement, "HUD best score element");
+  const hudBestLabel = requireElement("hud-best-label", HTMLSpanElement, "HUD best score label element");
   const hudBestValue = requireElement("hud-best-value", HTMLSpanElement, "HUD best score value element");
   const hudCoins = requireElement("hud-coins", HTMLDivElement, "HUD coins element");
+  const hudCoinLabel = requireElement("hud-coin-label", HTMLSpanElement, "HUD coin label element");
   const hudCoinsValue = requireElement("hud-coins-value", HTMLSpanElement, "HUD coins value element");
   const hudLives = requireElement("hud-lives", HTMLDivElement, "HUD lives element");
   const hudElement = hudLives.closest(".hud");
@@ -53,12 +56,17 @@ export function createDomGameUi() {
   const resultsCoinsRow = requireElement("results-coins-row", HTMLDivElement, "Results coins row element");
   const resultsBonusRow = requireElement("results-bonus-row", HTMLDivElement, "Results bonus row element");
   const resultsBaseValue = requireElement("results-base-value", HTMLElement, "Results base value element");
+  const resultsBaseLabel = requireElement("results-base-label", HTMLElement, "Results base label element");
   const resultsCoinsValue = requireElement("results-coins-value", HTMLElement, "Results coins value element");
+  const resultsCoinsLabel = requireElement("results-coins-label", HTMLElement, "Results coins label element");
   const resultsBonusValue = requireElement("results-bonus-value", HTMLElement, "Results bonus value element");
+  const resultsBonusLabel = requireElement("results-bonus-label", HTMLElement, "Results bonus label element");
   const resultsFinalCard = requireElement("results-final-card", HTMLDivElement, "Results final card element");
   const resultsFinalValue = requireElement("results-final-value", HTMLElement, "Results final value element");
+  const resultsFinalLabel = requireElement("results-final-label", HTMLElement, "Results final label element");
   const resultsMeta = requireElement("results-meta", HTMLDivElement, "Results meta element");
   const resultsBestValue = requireElement("results-best-value", HTMLElement, "Results best value element");
+  const resultsBestLabel = requireElement("results-best-label", HTMLElement, "Results best label element");
   const resultsRecordBadge = requireElement("results-record-badge", HTMLDivElement, "Results record badge element");
   const resultsBurst = requireElement("results-burst", HTMLDivElement, "Results burst element");
   const overlayFooter = requireElement("overlay-footer", HTMLDivElement, "Overlay footer element");
@@ -103,8 +111,9 @@ export function createDomGameUi() {
   }
 
   function renderLivesHud(lives: number, maxLives: number): void {
+    const text = getTranslations();
     hudLives.replaceChildren();
-    hudLives.setAttribute("aria-label", `Жизни: ${lives} из ${maxLives}`);
+    hudLives.setAttribute("aria-label", text.game.hud.livesAria(lives, maxLives));
     const lifeMarkup = createLifeIconSvgMarkup();
 
     for (let index = 0; index < maxLives; index += 1) {
@@ -363,16 +372,25 @@ export function createDomGameUi() {
   return {
     modal,
     render(model: AppReadModel): void {
+      const text = getTranslations();
       const { hud: hudModel } = model.game;
-      hudScore.textContent = `Счет: ${hudModel.score}`;
+      hudScore.textContent = text.game.hud.score(hudModel.score);
       const bestScore = hudModel.bestScore ?? 0;
+      hudBestLabel.textContent = text.game.hud.best;
       hudBestValue.textContent = String(bestScore);
-      hudBest.setAttribute("aria-label", `Лучший счет: ${bestScore}`);
+      hudBest.setAttribute("aria-label", text.game.hud.bestAria(bestScore));
+      hudCoinLabel.textContent = text.game.hud.coins;
       hudCoinsValue.textContent = String(hudModel.coins);
-      hudCoins.setAttribute("aria-label", `Монеты: ${hudModel.coins}`);
+      hudCoins.setAttribute("aria-label", text.game.hud.coinsAria(hudModel.coins));
       renderLivesHud(hudModel.lives, hudModel.maxLives);
       pauseButton.textContent = model.game.state === "paused" ? "▶" : "II";
-      pauseButton.setAttribute("aria-label", model.game.state === "paused" ? "Продолжить игру" : "Поставить игру на паузу");
+      pauseButton.setAttribute("aria-label", model.game.state === "paused" ? text.game.pause.resumeAria : text.game.pause.openAria);
+      resultsBaseLabel.textContent = text.game.results.baseScore;
+      resultsCoinsLabel.textContent = text.game.results.coins;
+      resultsBonusLabel.textContent = text.game.results.bonus;
+      resultsFinalLabel.textContent = text.game.results.finalScore;
+      resultsBestLabel.textContent = text.game.results.best;
+      resultsRecordBadge.textContent = text.game.results.newBest;
 
       if (hudModel.coins > lastCoins) {
         pulseCoinsHud();

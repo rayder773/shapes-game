@@ -1,5 +1,5 @@
 import { createAdminPage } from "./admin/admin-page.ts";
-import { installAnalyticsLifecycleFlush } from "./platform/analytics-client.ts";
+import { installAnalyticsLifecycleFlush, trackAnalyticsEvent } from "./platform/analytics-client.ts";
 import { initializeAppController } from "./app/app-controller.ts";
 import { createDomAppUi } from "./app/dom-app-ui.ts";
 import { createDomGameUi } from "./game/dom-game-ui.ts";
@@ -9,6 +9,10 @@ import { syncBestScore } from "./leaderboard/best-score-sync.ts";
 import { createLeaderboardPanel } from "./leaderboard/leaderboard-panel.ts";
 import { registerPwaServiceWorker } from "./platform/pwa.ts";
 import { createSettingsPage } from "./settings/settings-page.ts";
+import { createGameEventBus } from "./game/game-events.ts";
+import { installEventSounds } from "./platform/event-sounds.ts";
+import { EVENT_SOUNDS } from "./platform/event-sounds.config.ts";
+import { initializeLocale } from "./localization/localization.ts";
 
 function getGameCanvas(): HTMLCanvasElement {
   const canvas = document.getElementById("game");
@@ -28,6 +32,8 @@ function getGameCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext
   return context;
 }
 
+initializeLocale();
+
 const settingsPage = createSettingsPage();
 const adminPage = createAdminPage();
 const leaderboardPanel = createLeaderboardPanel();
@@ -40,6 +46,9 @@ const appUi = createDomAppUi({
   adminPage,
   body: document.body,
 });
+const gameEvents = createGameEventBus();
+gameEvents.subscribe(({ type, payload }) => trackAnalyticsEvent(type, payload));
+installEventSounds(gameEvents, EVENT_SOUNDS);
 
 document.body.append(settingsPage.element, adminPage.element, leaderboardPanel.element);
 initializeIcons();
@@ -54,6 +63,7 @@ initializeGame({
   context: gameContext,
   ui: gameUi,
   rootStyle: document.documentElement.style,
+  events: gameEvents,
   openLeaderboard: () => {
     void leaderboardPanel.open();
   },

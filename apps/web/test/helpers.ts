@@ -8,6 +8,7 @@ type Internals = {
   setViewport: (width: number, height: number) => void;
   setDeviceMode: (mode: "desktop" | "phone") => void;
   setStandaloneMode: (value: boolean) => void;
+  setDeviceLanguages: (languages: readonly string[]) => void;
   dispatchViewportEvent: (type: string) => void;
   advanceNow: (ms: number) => void;
 };
@@ -39,6 +40,10 @@ export function setViewport(width: number, height: number) {
 
 export function setStandaloneMode(value: boolean) {
   globalThis.__ANTI_MATCH_TEST_INTERNALS__.setStandaloneMode(value);
+}
+
+export function setDeviceLanguages(languages: readonly string[]) {
+  globalThis.__ANTI_MATCH_TEST_INTERNALS__.setDeviceLanguages(languages);
 }
 
 export async function bootApp(path = "/shapes-game/") {

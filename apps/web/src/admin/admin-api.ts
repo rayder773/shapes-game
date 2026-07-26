@@ -33,6 +33,15 @@ export type EventPage = {
   hasMore: boolean;
 };
 
+export type AdminApiErrorCode = "loadUsers" | "loadEvents" | "deleteUser";
+
+export class AdminApiError extends Error {
+  constructor(readonly code: AdminApiErrorCode) {
+    super(code);
+    this.name = "AdminApiError";
+  }
+}
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
 
 function apiUrl(path: string): string {
@@ -44,7 +53,7 @@ export async function loadVisitors(): Promise<VisitorRecord[]> {
   const payload = (await response.json()) as VisitorsResponse;
 
   if (!response.ok || !payload.ok || !payload.visitors) {
-    throw new Error("Не удалось загрузить пользователей");
+    throw new AdminApiError("loadUsers");
   }
 
   return payload.visitors;
@@ -60,7 +69,7 @@ export async function loadVisitorEvents(visitorId: string, beforeId: number | nu
   const payload = (await response.json()) as EventsResponse;
 
   if (!response.ok || !payload.ok || !payload.events) {
-    throw new Error("Не удалось загрузить события пользователя");
+    throw new AdminApiError("loadEvents");
   }
 
   return {
@@ -76,6 +85,6 @@ export async function deleteVisitor(visitorId: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error("Не удалось удалить пользователя");
+    throw new AdminApiError("deleteUser");
   }
 }

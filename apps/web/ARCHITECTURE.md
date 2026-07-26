@@ -33,6 +33,8 @@ DOM / input events
 
 Business tests should prefer `GameReadModel` and `AppReadModel`. DOM assertions should stay limited to adapter, routing, accessibility, and smoke coverage.
 
+Semantic game events are published through `game/game-events.ts`. Browser integrations subscribe in the bootstrap layer, so gameplay does not depend on effects such as sound. Event-to-file mappings live in `platform/event-sounds.config.ts`; files themselves belong under `public/sounds`.
+
 ## Current State
 
 `src/game/game.ts` is still the main remaining large module. It acts as the compatibility facade and still owns gameplay systems, Planck physics adapter creation, browser input bindings, lifecycle, PWA flow, analytics hooks, and app rendering.
