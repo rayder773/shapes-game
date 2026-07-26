@@ -26,9 +26,6 @@ import {
   flushAnalyticsEvents,
   getAnalyticsSessionId,
   startAnalyticsRound,
-  trackAnalyticsEvent,
-  type AnalyticsEventType,
-  type AnalyticsPayload,
 } from "../platform/analytics-client.ts";
 import {
   readLocalBestScore,
@@ -100,6 +97,7 @@ import {
   type PlayerEntity,
   type SettingsEntity,
 } from "./game-runtime.ts";
+import type { GameEventBus, GameEventType } from "./game-events.ts";
 
 type FullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -119,6 +117,7 @@ export type GameDomDependencies = {
   ui: DomGameUi;
   rootStyle: CSSStyleDeclaration;
   openLeaderboard?: OpenLeaderboardListener;
+  events?: GameEventBus;
 };
 
 const SCALE = 30;
@@ -142,6 +141,7 @@ let canvasRenderer: CanvasRenderer;
 let ui: DomGameUi;
 let rootStyle: CSSStyleDeclaration;
 let openLeaderboardListener: OpenLeaderboardListener | null = null;
+let gameEvents: GameEventBus | null = null;
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
 const game = createRuntime({
@@ -218,7 +218,7 @@ function getRoundElapsedMs(): number {
   return Math.max(0, Math.round(performance.now() - game.roundStartedAt));
 }
 
-function getSharedAnalyticsPayload(): AnalyticsPayload {
+function getSharedAnalyticsPayload(): Record<string, unknown> {
   const profile = getGameplayProfile();
 
   return {
@@ -234,11 +234,12 @@ function getSharedAnalyticsPayload(): AnalyticsPayload {
   };
 }
 
-function trackGameplayEvent(type: AnalyticsEventType, payload: AnalyticsPayload = {}): void {
-  trackAnalyticsEvent(type, {
+function trackGameplayEvent(type: GameEventType, payload: Record<string, unknown> = {}): void {
+  const eventPayload = {
     ...getSharedAnalyticsPayload(),
     ...payload,
-  });
+  };
+  gameEvents?.publish({ type, payload: eventPayload });
 }
 
 function updateGameplayProfile(resetDraft = false): void {
@@ -1363,6 +1364,7 @@ function togglePauseGame(): void {
     ui = dependencies.ui;
     rootStyle = dependencies.rootStyle;
     openLeaderboardListener = dependencies.openLeaderboard ?? null;
+    gameEvents = dependencies.events ?? null;
     configureSettingsController({
       getSettingsEntity,
       onPersistActiveProfileSettings() {
