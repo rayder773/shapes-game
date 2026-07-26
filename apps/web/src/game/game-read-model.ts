@@ -4,6 +4,7 @@ export type GameReadModelEntityKind = "player" | "target" | "lifePickup" | "coin
 export type GameReadModelOverlayAction =
   | "resume"
   | "restart"
+  | "openLeaderboard"
   | "acceptOnboarding"
   | "openSettings"
   | "confirmInstall"

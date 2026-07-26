@@ -773,6 +773,137 @@
         transform: translateY(1px) scale(0.99);
       }
 
+      .leaderboard-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 8;
+        display: grid;
+        place-items: center;
+        padding:
+          calc(var(--safe-top) + 18px)
+          calc(var(--safe-right) + 18px)
+          calc(var(--safe-bottom) + 18px)
+          calc(var(--safe-left) + 18px);
+        background: rgba(2, 4, 8, 0.68);
+        backdrop-filter: blur(12px);
+      }
+
+      .leaderboard-panel {
+        width: min(100%, 560px);
+        max-height: min(720px, calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 36px));
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 24px;
+        background:
+          radial-gradient(circle at 18% 0%, rgba(77, 215, 255, 0.14), transparent 34%),
+          linear-gradient(180deg, rgba(9, 17, 29, 0.98), rgba(8, 12, 20, 0.98));
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+      }
+
+      .leaderboard-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .leaderboard-header h2 {
+        margin: 0;
+        font-size: clamp(1.5rem, 4vw, 2.25rem);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .leaderboard-close {
+        appearance: none;
+        width: 42px;
+        height: 42px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        font: inherit;
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .leaderboard-status {
+        min-height: 22px;
+        margin: -4px 0 0;
+        color: rgba(244, 247, 251, 0.68);
+        font-size: 0.95rem;
+      }
+
+      .leaderboard-list {
+        min-height: 0;
+        overflow-y: auto;
+        display: grid;
+        gap: 8px;
+        padding-right: 2px;
+        overscroll-behavior: contain;
+      }
+
+      .leaderboard-row {
+        display: grid;
+        grid-template-columns: 62px 16px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        min-height: 54px;
+        padding: 12px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.035);
+      }
+
+      .leaderboard-row[data-current="true"] {
+        border-color: color-mix(in srgb, var(--player-accent) 58%, white 8%);
+        background:
+          linear-gradient(135deg, color-mix(in srgb, var(--player-accent) 22%, transparent), transparent 62%),
+          rgba(255, 255, 255, 0.06);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--player-accent) 22%, transparent) inset;
+      }
+
+      .leaderboard-rank,
+      .leaderboard-score {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .leaderboard-rank {
+        color: rgba(244, 247, 251, 0.62);
+        font-weight: 800;
+      }
+
+      .leaderboard-marker {
+        width: 11px;
+        height: 11px;
+        border-radius: 999px;
+        background: var(--player-accent);
+        box-shadow: 0 0 16px color-mix(in srgb, var(--player-accent) 48%, transparent);
+      }
+
+      .leaderboard-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 800;
+        color: rgba(247, 250, 255, 0.96);
+      }
+
+      .leaderboard-row[data-current="true"] .leaderboard-name::before {
+        content: "★ ";
+        color: var(--player-accent);
+      }
+
+      .leaderboard-score {
+        color: rgba(255, 244, 220, 0.98);
+        text-align: right;
+      }
+
       @media (max-width: 720px) {
         .hud {
           gap: 12px;
@@ -800,6 +931,16 @@
         .modal button,
         .settings-button {
           width: 100%;
+        }
+
+        .leaderboard-panel {
+          padding: 20px 16px;
+        }
+
+        .leaderboard-row {
+          grid-template-columns: 48px 12px minmax(0, 1fr) auto;
+          gap: 9px;
+          padding: 11px 10px;
         }
       }
 
@@ -967,6 +1108,7 @@
           <button id="overlay-install-button" class="secondary" type="button" hidden>Установить</button>
           <button id="overlay-secondary-button" class="secondary" type="button" hidden>Начать заново</button>
           <button id="overlay-tertiary-button" class="secondary" type="button" hidden>Начать заново</button>
+          <button id="overlay-quaternary-button" class="secondary" type="button" hidden>Топ игроков</button>
         </div>
         <div id="overlay-footer" class="modal-footer" hidden>
           <p id="overlay-footer-message"></p>

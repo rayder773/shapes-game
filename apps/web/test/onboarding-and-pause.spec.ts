@@ -48,6 +48,7 @@ describe("onboarding and pause", () => {
     expect(getPauseButton().getAttribute("aria-label")).toBe("Продолжить игру");
     expect(document.getElementById("overlay-secondary-button")?.textContent).toBe("Настройки");
     expect(document.getElementById("overlay-tertiary-button")?.textContent).toBe("Начать заново");
+    expect(document.getElementById("overlay-quaternary-button")?.textContent).toBe("Топ игроков");
 
     click(getPrimaryOverlayButton());
     await waitForPlayingState();

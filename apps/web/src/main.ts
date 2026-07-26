@@ -5,6 +5,8 @@ import { createDomAppUi } from "./app/dom-app-ui.ts";
 import { createDomGameUi } from "./game/dom-game-ui.ts";
 import { initializeGame } from "./game/game.ts";
 import { initializeIcons } from "./icons.ts";
+import { syncBestScore } from "./leaderboard/best-score-sync.ts";
+import { createLeaderboardPanel } from "./leaderboard/leaderboard-panel.ts";
 import { registerPwaServiceWorker } from "./platform/pwa.ts";
 import { createSettingsPage } from "./settings/settings-page.ts";
 
@@ -28,6 +30,7 @@ function getGameCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext
 
 const settingsPage = createSettingsPage();
 const adminPage = createAdminPage();
+const leaderboardPanel = createLeaderboardPanel();
 const gameCanvas = getGameCanvas();
 const gameContext = getGameCanvasContext(gameCanvas);
 const gameUi = createDomGameUi();
@@ -38,15 +41,22 @@ const appUi = createDomAppUi({
   body: document.body,
 });
 
-document.body.append(settingsPage.element, adminPage.element);
+document.body.append(settingsPage.element, adminPage.element, leaderboardPanel.element);
 initializeIcons();
 installAnalyticsLifecycleFlush();
+void syncBestScore();
+window.addEventListener("online", () => {
+  void syncBestScore();
+});
 registerPwaServiceWorker();
 initializeGame({
   canvas: gameCanvas,
   context: gameContext,
   ui: gameUi,
   rootStyle: document.documentElement.style,
+  openLeaderboard: () => {
+    void leaderboardPanel.open();
+  },
 });
 initializeAppController({
   appUi,

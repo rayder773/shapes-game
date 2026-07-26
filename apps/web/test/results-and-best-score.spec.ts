@@ -55,7 +55,10 @@ describe("results and best score", () => {
     const state = await playUntilGameOver();
     expect(state.overlay.view).toMatchObject({
       title: "Результаты",
-      buttons: [{ label: "Начать заново", action: "restart" }],
+      buttons: [
+        { label: "Начать заново", action: "restart" },
+        { label: "Топ игроков", action: "openLeaderboard" },
+      ],
       results: {
         baseScore: state.roundResult.baseScore,
         coins: state.hud.coins,
@@ -70,7 +73,7 @@ describe("results and best score", () => {
     expect(document.getElementById("results-coins-value")?.textContent).toBe(String(state.hud.coins));
     expect(document.getElementById("results-best-value")?.textContent).toBe(String(state.roundResult.bestScore));
     expect(document.getElementById("results-record-badge")?.hasAttribute("hidden")).toBe(true);
-    expect(document.getElementById("overlay-secondary-button")?.hasAttribute("hidden")).toBe(true);
+    expect(document.getElementById("overlay-secondary-button")?.textContent).toBe("Топ игроков");
   });
 
   test("negative and invalid best score values do not break boot and new best is saved", async () => {

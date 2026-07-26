@@ -162,6 +162,7 @@ function createPauseView(): GameReadModelOverlayView {
       { label: "Продолжить", action: "resume" },
       { label: "Настройки", action: "openSettings" },
       { label: "Начать заново", action: "restart" },
+      { label: "Топ игроков", action: "openLeaderboard" },
     ],
     installButton: { label: "Установить", surface: "pause" },
     footerPrompt: null,
@@ -176,7 +177,10 @@ function createGameOverView(): GameReadModelOverlayView {
     title: "Результаты",
     message: "",
     tips: [],
-    buttons: [{ label: "Начать заново", action: "restart" }],
+    buttons: [
+      { label: "Начать заново", action: "restart" },
+      { label: "Топ игроков", action: "openLeaderboard" },
+    ],
     installButton: null,
     footerPrompt: {
       message: "Можно установить игру на главный экран.",
@@ -267,12 +271,14 @@ describe("DOM game UI adapter", () => {
     expect(getElement("overlay-primary-button", HTMLButtonElement).textContent).toBe("Продолжить");
     expect(getElement("overlay-secondary-button", HTMLButtonElement).textContent).toBe("Настройки");
     expect(getElement("overlay-tertiary-button", HTMLButtonElement).textContent).toBe("Начать заново");
+    expect(getElement("overlay-quaternary-button", HTMLButtonElement).textContent).toBe("Топ игроков");
     expect(getElement("overlay-install-button", HTMLButtonElement).hidden).toBe(false);
 
     click(getElement("pause-button", HTMLButtonElement));
     click(getElement("overlay-primary-button", HTMLButtonElement));
     click(getElement("overlay-secondary-button", HTMLButtonElement));
     click(getElement("overlay-tertiary-button", HTMLButtonElement));
+    click(getElement("overlay-quaternary-button", HTMLButtonElement));
     click(getElement("overlay-install-button", HTMLButtonElement));
 
     expect(events).toEqual([
@@ -281,6 +287,7 @@ describe("DOM game UI adapter", () => {
       { type: "overlay-action", action: "resume" },
       { type: "overlay-action", action: "openSettings" },
       { type: "overlay-action", action: "restart" },
+      { type: "overlay-action", action: "openLeaderboard" },
       { type: "open-install-flow", surface: "pause" },
     ]);
   });
@@ -309,10 +316,12 @@ describe("DOM game UI adapter", () => {
     expect(getElement("overlay-footer-button", HTMLButtonElement).textContent).toBe("Установить");
 
     click(getElement("overlay-primary-button", HTMLButtonElement));
+    click(getElement("overlay-secondary-button", HTMLButtonElement));
     click(getElement("overlay-footer-button", HTMLButtonElement));
 
     expect(events).toEqual([
       { type: "overlay-action", action: "restart" },
+      { type: "overlay-action", action: "openLeaderboard" },
       { type: "overlay-action", action: "confirmInstall" },
     ]);
   });

@@ -255,6 +255,7 @@ describe("read model builder", () => {
         { label: "Продолжить", action: "resume" },
         { label: "Настройки", action: "openSettings" },
         { label: "Начать заново", action: "restart" },
+        { label: "Топ игроков", action: "openLeaderboard" },
       ],
     });
   });

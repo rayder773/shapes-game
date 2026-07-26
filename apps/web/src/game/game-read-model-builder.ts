@@ -149,6 +149,7 @@ export function createOverlayView(
         { label: "Продолжить", action: "resume" },
         { label: "Настройки", action: "openSettings" },
         { label: "Начать заново", action: "restart" },
+        { label: "Топ игроков", action: "openLeaderboard" },
       ],
       installButton: context.pauseInstallButton.visible
         ? { label: context.pauseInstallButton.label, surface: "pause" }
@@ -166,7 +167,10 @@ export function createOverlayView(
       title: "Результаты",
       message: "",
       tips: [],
-      buttons: [{ label: "Начать заново", action: "restart" }],
+      buttons: [
+        { label: "Начать заново", action: "restart" },
+        { label: "Топ игроков", action: "openLeaderboard" },
+      ],
       installButton: null,
       footerPrompt: runtime.gameOverInstallPrompt
         ? {

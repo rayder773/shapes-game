@@ -68,9 +68,10 @@ export function createDomGameUi() {
   const overlayPrimaryButton = requireElement("overlay-primary-button", HTMLButtonElement, "Overlay primary button element");
   const overlaySecondaryButton = requireElement("overlay-secondary-button", HTMLButtonElement, "Overlay secondary button element");
   const overlayTertiaryButton = requireElement("overlay-tertiary-button", HTMLButtonElement, "Overlay tertiary button element");
+  const overlayQuaternaryButton = requireElement("overlay-quaternary-button", HTMLButtonElement, "Overlay quaternary button element");
   const overlayInstallButton = requireElement("overlay-install-button", HTMLButtonElement, "Overlay install button element");
   const listeners = new Set<DomGameUiListener>();
-  const overlayButtons = [overlayPrimaryButton, overlaySecondaryButton, overlayTertiaryButton];
+  const overlayButtons = [overlayPrimaryButton, overlaySecondaryButton, overlayTertiaryButton, overlayQuaternaryButton];
   let hudLivesPulseTimeoutId: number | null = null;
   let hudCoinsPulseTimeoutId: number | null = null;
   let resultsAnimationToken = 0;
