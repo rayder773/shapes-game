@@ -31,6 +31,7 @@ type VisitorListRow = {
   ip: string;
   user_agent: string;
   created_at: string;
+  last_event_at: string | null;
   events_count: number | string;
 };
 
@@ -89,11 +90,12 @@ registerDevControllers(app);
 app.get("/admin/api/visitors", async (context) => {
   const visitors = await context.env.DB.prepare(
     `SELECT visitors.id, visitors.ip, visitors.user_agent, visitors.created_at,
+      MAX(events.client_created_at) AS last_event_at,
       COUNT(events.id) AS events_count
     FROM visitors
     LEFT JOIN events ON events.visitor_id = visitors.id
     GROUP BY visitors.id
-    ORDER BY visitors.created_at DESC`,
+    ORDER BY COALESCE(MAX(events.id), 0) DESC, visitors.created_at DESC`,
   ).all<VisitorListRow>();
 
   return context.json({

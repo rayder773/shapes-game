@@ -39,6 +39,7 @@ export function createAdminPage(): AdminPageController {
   const root = document.createElement("div");
   root.className = "admin-page";
   root.hidden = true;
+  let isVisible = false;
 
   async function refreshVisitors(): Promise<void> {
     state.isLoadingVisitors = true;
@@ -190,6 +191,7 @@ export function createAdminPage(): AdminPageController {
                     <th>IP</th>
                     <th>User-Agent</th>
                     <th>События</th>
+                    <th>Последняя активность</th>
                     <th>Создан</th>
                     <th>Действия</th>
                   </tr>
@@ -273,11 +275,11 @@ export function createAdminPage(): AdminPageController {
 
   function renderVisitorRows(): string {
     if (state.isLoadingVisitors && !state.hasLoaded) {
-      return '<tr><td colspan="6" class="admin-empty">Загружаем пользователей...</td></tr>';
+      return '<tr><td colspan="7" class="admin-empty">Загружаем пользователей...</td></tr>';
     }
 
     if (state.visitors.length === 0) {
-      return '<tr><td colspan="6" class="admin-empty">Пользователей пока нет.</td></tr>';
+      return '<tr><td colspan="7" class="admin-empty">Пользователей пока нет.</td></tr>';
     }
 
     return state.visitors
@@ -294,6 +296,7 @@ export function createAdminPage(): AdminPageController {
             <td>${escapeHtml(visitor.ip || "нет IP")}</td>
             <td class="admin-user-agent">${escapeHtml(visitor.user_agent || "нет user-agent")}</td>
             <td>${visitor.events_count}</td>
+            <td>${escapeHtml(visitor.last_event_at ? formatDateTime(visitor.last_event_at) : "нет событий")}</td>
             <td>${escapeHtml(formatDateTime(visitor.created_at))}</td>
             <td>
               <button
@@ -365,7 +368,9 @@ export function createAdminPage(): AdminPageController {
     element: root,
     setVisible(visible) {
       root.hidden = !visible;
-      if (visible && !state.hasLoaded && !state.isLoadingVisitors) {
+      const becameVisible = visible && !isVisible;
+      isVisible = visible;
+      if (becameVisible && !state.isLoadingVisitors) {
         void refreshVisitors();
       }
     },

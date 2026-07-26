@@ -3,6 +3,7 @@ export type VisitorRecord = {
   ip: string;
   user_agent: string;
   created_at: string;
+  last_event_at: string | null;
   events_count: number;
 };
 
