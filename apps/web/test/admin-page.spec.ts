@@ -7,6 +7,7 @@ const visitors = [
     ip: "127.0.0.1",
     user_agent: "Vitest Browser",
     created_at: "2026-05-11T10:00:00.000Z",
+    last_event_at: "2026-05-11T10:05:00.000Z",
     events_count: 2,
   },
   {
@@ -14,6 +15,7 @@ const visitors = [
     ip: "192.0.2.10",
     user_agent: "Second Browser",
     created_at: "2026-05-11T11:00:00.000Z",
+    last_event_at: "2026-05-11T11:05:00.000Z",
     events_count: 1,
   },
 ];
