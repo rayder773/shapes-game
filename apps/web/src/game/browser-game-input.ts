@@ -4,6 +4,7 @@ export type BrowserGameInputEvent =
   | { type: "pause-toggle-requested" }
   | { type: "direction-key-changed"; key: InputKey; pressed: boolean }
   | { type: "pointer-aim-requested"; canvasX: number; canvasY: number; pointerType: string }
+  | { type: "direction-vector-requested"; direction: { x: number; y: number } }
   | { type: "player-boost-requested" }
   | { type: "auto-pause-requested" }
   | { type: "viewport-change-requested" }
@@ -26,6 +27,7 @@ export type BrowserGameInputDependencies = {
   now: () => number;
   isGameRouteActive?: () => boolean;
   isGamePlaying?: () => boolean;
+  isTouchJoystickEnabled?: () => boolean;
 };
 
 const DIRECTIONAL_KEYS = new Map<string, InputKey>([
@@ -43,6 +45,7 @@ const DOUBLE_TAP_WINDOW_MS = 300;
 const DOUBLE_TAP_RADIUS_PX = 40;
 const DOUBLE_TAP_ZOOM_WINDOW_MS = 350;
 const DOUBLE_TAP_ZOOM_RADIUS_PX = 24;
+const JOYSTICK_DEAD_ZONE_PX = 8;
 
 function isInteractiveElement(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
@@ -59,12 +62,16 @@ export function createBrowserGameInput({
   now,
   isGameRouteActive = () => true,
   isGamePlaying = () => true,
+  isTouchJoystickEnabled = () => false,
 }: BrowserGameInputDependencies): BrowserGameInput {
   const listeners = new Set<BrowserGameInputListener>();
   let hasInstalled = false;
   let lastPointerDownTime = 0;
   let lastPointerDownX = 0;
   let lastPointerDownY = 0;
+  let activeJoystickPointerId: number | null = null;
+  let joystickStartX = 0;
+  let joystickStartY = 0;
 
   function emit(event: BrowserGameInputEvent): void {
     for (const listener of listeners) {
@@ -156,6 +163,7 @@ export function createBrowserGameInput({
     });
 
     window.addEventListener("blur", () => {
+      activeJoystickPointerId = null;
       emit({ type: "auto-pause-requested" });
     });
 
@@ -192,6 +200,12 @@ export function createBrowserGameInput({
 
       event.preventDefault();
 
+      if (
+        isTouchJoystickEnabled()
+        && activeJoystickPointerId !== null
+        && activeJoystickPointerId !== event.pointerId
+      ) return;
+
       const eventTime = now();
       const elapsed = eventTime - lastPointerDownTime;
       const isDoubleTap =
@@ -213,7 +227,47 @@ export function createBrowserGameInput({
         canvasY: event.clientY,
         pointerType: event.pointerType,
       });
+
+      if (isTouchJoystickEnabled()) {
+        activeJoystickPointerId = event.pointerId;
+        joystickStartX = event.clientX;
+        joystickStartY = event.clientY;
+        canvas.setPointerCapture?.(event.pointerId);
+      }
     });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (
+        activeJoystickPointerId === null
+        || event.pointerId !== activeJoystickPointerId
+        || !isGameRouteActive()
+        || !isGamePlaying()
+      ) return;
+
+      const deltaX = event.clientX - joystickStartX;
+      const deltaY = event.clientY - joystickStartY;
+      const distance = Math.hypot(deltaX, deltaY);
+      if (distance < JOYSTICK_DEAD_ZONE_PX) return;
+
+      event.preventDefault();
+      emit({
+        type: "direction-vector-requested",
+        direction: {
+          x: deltaX / distance,
+          y: -deltaY / distance,
+        },
+      });
+    });
+
+    const finishJoystickPointer = (event: PointerEvent): void => {
+      if (event.pointerId !== activeJoystickPointerId) return;
+      activeJoystickPointerId = null;
+      if (canvas.hasPointerCapture?.(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+    };
+    canvas.addEventListener("pointerup", finishJoystickPointer);
+    canvas.addEventListener("pointercancel", finishJoystickPointer);
 
     installBrowserInteractionGuards();
     installDoubleTapZoomGuard(modal);

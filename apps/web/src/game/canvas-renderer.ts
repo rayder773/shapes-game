@@ -33,6 +33,18 @@ type CanvasRendererDependencies = {
   scale: number;
 };
 
+export const CANVAS_WORLD_SCALE = 30;
+
+export function composeCanvasRenderers(...renderers: CanvasRenderer[]): CanvasRenderer {
+  return {
+    render(frame): void {
+      for (const renderer of renderers) {
+        renderer.render(frame);
+      }
+    },
+  };
+}
+
 const COLOR_MAP: Record<ColorName, string> = {
   red: "#ff5f5f",
   blue: "#66a8ff",

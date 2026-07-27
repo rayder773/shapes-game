@@ -211,10 +211,12 @@ Object.defineProperty(window, "PointerEvent", {
   configurable: true,
   value: class PointerEvent extends MouseEvent {
     pointerType: string;
+    pointerId: number;
 
     constructor(type: string, init?: PointerEventInit) {
       super(type, init);
       this.pointerType = init?.pointerType ?? "mouse";
+      this.pointerId = init?.pointerId ?? 1;
     }
   },
 });

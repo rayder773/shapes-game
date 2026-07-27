@@ -10,7 +10,7 @@ let visualViewport: EventTarget;
 let nowMs: number;
 let events: BrowserGameInputEvent[];
 
-function installInput(): void {
+function installInput(options: { touchJoystick?: boolean } = {}): void {
   const capturedEvents = events;
   const input = createBrowserGameInput({
     canvas,
@@ -19,6 +19,7 @@ function installInput(): void {
     document,
     visualViewport,
     now: () => nowMs,
+    isTouchJoystickEnabled: () => options.touchJoystick ?? false,
   });
   input.subscribe((event) => capturedEvents.push(event));
   input.install();
@@ -38,6 +39,21 @@ function dispatchPointerDown(init: Partial<PointerEventInit> = {}): PointerEvent
     clientY: 120,
     button: 0,
     pointerType: "mouse",
+    ...init,
+  });
+  canvas.dispatchEvent(event);
+  return event;
+}
+
+function dispatchPointerEvent(type: "pointermove" | "pointerup" | "pointercancel", init: Partial<PointerEventInit> = {}): PointerEvent {
+  const event = new PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: 100,
+    clientY: 120,
+    button: 0,
+    pointerId: 1,
+    pointerType: "touch",
     ...init,
   });
   canvas.dispatchEvent(event);
@@ -137,6 +153,48 @@ describe("browser game input", () => {
         type: "pointer-aim-requested",
         canvasX: 215,
         canvasY: 235,
+        pointerType: "mouse",
+      },
+    ]);
+  });
+
+  test("maps mobile joystick drag to a normalized direction until pointerup", () => {
+    installInput({ touchJoystick: true });
+
+    dispatchPointerDown({ clientX: 200, clientY: 220, pointerId: 7, pointerType: "touch" });
+    dispatchPointerEvent("pointermove", { clientX: 204, clientY: 223, pointerId: 7 });
+    const drag = dispatchPointerEvent("pointermove", { clientX: 230, clientY: 260, pointerId: 7 });
+    dispatchPointerEvent("pointerup", { clientX: 230, clientY: 260, pointerId: 7 });
+    dispatchPointerEvent("pointermove", { clientX: 260, clientY: 220, pointerId: 7 });
+
+    expect(drag.defaultPrevented).toBe(true);
+    expect(events).toEqual([
+      { type: "user-gesture" },
+      {
+        type: "pointer-aim-requested",
+        canvasX: 200,
+        canvasY: 220,
+        pointerType: "touch",
+      },
+      {
+        type: "direction-vector-requested",
+        direction: { x: 0.6, y: -0.8 },
+      },
+    ]);
+  });
+
+  test("keeps desktop pointer movement out of joystick steering", () => {
+    installInput();
+
+    dispatchPointerDown({ clientX: 200, clientY: 220, pointerId: 4 });
+    dispatchPointerEvent("pointermove", { clientX: 260, clientY: 220, pointerId: 4 });
+
+    expect(events).toEqual([
+      { type: "user-gesture" },
+      {
+        type: "pointer-aim-requested",
+        canvasX: 200,
+        canvasY: 220,
         pointerType: "mouse",
       },
     ]);
