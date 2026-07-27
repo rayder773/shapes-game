@@ -98,6 +98,7 @@ import {
   type SettingsEntity,
 } from "./game-runtime.ts";
 import type { GameEventBus, GameEventType } from "./game-events.ts";
+import { isPhoneDevice } from "../platform/device.ts";
 import { getTranslations } from "../localization/localization.ts";
 
 type FullscreenDocument = Document & {
@@ -283,6 +284,23 @@ function getViewportSize(): { width: number; height: number } {
 function syncViewportCssVars(widthCss: number, heightCss: number): void {
   rootStyle.setProperty("--app-width", `${widthCss}px`);
   rootStyle.setProperty("--app-height", `${heightCss}px`);
+}
+
+function syncMobileGameLayout(): number {
+  const isMobileLayout = isPhoneDevice();
+  document.documentElement.classList.toggle("mobile-game-layout", isMobileLayout);
+
+  if (!isMobileLayout) {
+    rootStyle.setProperty("--game-top", "0px");
+    return 0;
+  }
+
+  const hud = document.querySelector<HTMLElement>(".hud");
+  rootStyle.setProperty("--game-top", "auto");
+  const hudHeight = Math.ceil(hud?.getBoundingClientRect().height ?? 0);
+  const gameTop = hudHeight > 0 ? hudHeight : 104;
+  rootStyle.setProperty("--game-top", `${gameTop}px`);
+  return gameTop;
 }
 
 function getRandomDirection(): MovementDirection {
@@ -1045,11 +1063,12 @@ function togglePauseGame(): void {
     const dpr = window.devicePixelRatio || 1;
     const viewport = getViewportSize();
     const widthCss = viewport.width;
-    const heightCss = viewport.height;
+    syncViewportCssVars(widthCss, viewport.height);
+    const gameTop = syncMobileGameLayout();
+    const heightCss = Math.max(1, viewport.height - gameTop);
     const widthPx = Math.floor(widthCss * dpr);
     const heightPx = Math.floor(heightCss * dpr);
 
-    syncViewportCssVars(widthCss, heightCss);
     game.canvasMetrics.dpr = dpr;
     game.canvasMetrics.widthCss = widthCss;
     game.canvasMetrics.heightCss = heightCss;

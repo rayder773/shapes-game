@@ -221,10 +221,12 @@ export function createBrowserGameInput({
         emit({ type: "player-boost-requested" });
       }
 
+      const canvasBounds = canvas.getBoundingClientRect();
+
       emit({
         type: "pointer-aim-requested",
-        canvasX: event.clientX,
-        canvasY: event.clientY,
+        canvasX: event.clientX - canvasBounds.left,
+        canvasY: event.clientY - canvasBounds.top,
         pointerType: event.pointerType,
       });
 
