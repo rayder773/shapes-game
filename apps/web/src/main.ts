@@ -8,6 +8,13 @@ import { initializeIcons } from "./icons.ts";
 import { syncBestScore } from "./leaderboard/best-score-sync.ts";
 import { createLeaderboardPanel } from "./leaderboard/leaderboard-panel.ts";
 import { registerPwaServiceWorker } from "./platform/pwa.ts";
+import {
+  CANVAS_WORLD_SCALE,
+  composeCanvasRenderers,
+  createCanvasRenderer,
+} from "./game/canvas-renderer.ts";
+import { isPhoneDevice } from "./platform/device.ts";
+import { createPointerFeedback } from "./platform/pointer-feedback.ts";
 import { createSettingsPage } from "./settings/settings-page.ts";
 import { createGameEventBus } from "./game/game-events.ts";
 import { installEventSounds } from "./platform/event-sounds.ts";
@@ -39,6 +46,16 @@ const adminPage = createAdminPage();
 const leaderboardPanel = createLeaderboardPanel();
 const gameCanvas = getGameCanvas();
 const gameContext = getGameCanvasContext(gameCanvas);
+const pointerFeedback = createPointerFeedback({
+  canvas: gameCanvas,
+  context: gameContext,
+  isPhoneDevice,
+  now: () => performance.now(),
+});
+const gameRenderer = composeCanvasRenderers(
+  createCanvasRenderer({ context: gameContext, scale: CANVAS_WORLD_SCALE }),
+  pointerFeedback,
+);
 const gameUi = createDomGameUi();
 const appUi = createDomAppUi({
   gameUi,
@@ -58,9 +75,11 @@ window.addEventListener("online", () => {
   void syncBestScore();
 });
 registerPwaServiceWorker();
+pointerFeedback.install();
 initializeGame({
   canvas: gameCanvas,
   context: gameContext,
+  renderer: gameRenderer,
   ui: gameUi,
   rootStyle: document.documentElement.style,
   events: gameEvents,

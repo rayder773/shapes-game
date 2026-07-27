@@ -14,7 +14,7 @@ import {
   type PwaInstallOverlayModel,
 } from "../platform/pwa.ts";
 import {
-  createCanvasRenderer,
+  CANVAS_WORLD_SCALE,
   type CanvasRenderer,
 } from "./canvas-renderer.ts";
 import {
@@ -115,13 +115,14 @@ type OpenLeaderboardListener = () => void;
 export type GameDomDependencies = {
   canvas: HTMLCanvasElement;
   context: CanvasRenderingContext2D;
+  renderer: CanvasRenderer;
   ui: DomGameUi;
   rootStyle: CSSStyleDeclaration;
   openLeaderboard?: OpenLeaderboardListener;
   events?: GameEventBus;
 };
 
-const SCALE = 30;
+const SCALE = CANVAS_WORLD_SCALE;
 const FIXED_DT = 1 / 60;
 const MAX_FRAME_DT = 1 / 24;
 const MIN_POINTER_TARGET_DISTANCE = 10;
@@ -1252,6 +1253,14 @@ function togglePauseGame(): void {
         return;
       }
 
+      if (event.type === "direction-vector-requested") {
+        const player = getPlayerEntity();
+        if (game.state === "playing" && player) {
+          setEntityVelocityAlongDirection(player, event.direction);
+        }
+        return;
+      }
+
       if (event.type === "player-boost-requested") {
         game.playerBoostExpiresAt = performance.now() + PLAYER_BOOST_DURATION_MS;
         return;
@@ -1278,6 +1287,7 @@ function togglePauseGame(): void {
       now: () => performance.now(),
       isGameRouteActive: () => isGameRouteActive,
       isGamePlaying: () => game.state === "playing",
+      isTouchJoystickEnabled: () => getGameplayProfile().compactTouch,
     });
     browserInput.subscribe(handleBrowserInputEvent);
     browserInput.install();
@@ -1360,7 +1370,7 @@ function togglePauseGame(): void {
   export function initializeGame(dependencies: GameDomDependencies): void {
     canvas = dependencies.canvas;
     ctx = dependencies.context;
-    canvasRenderer = createCanvasRenderer({ context: ctx, scale: SCALE });
+    canvasRenderer = dependencies.renderer;
     ui = dependencies.ui;
     rootStyle = dependencies.rootStyle;
     openLeaderboardListener = dependencies.openLeaderboard ?? null;

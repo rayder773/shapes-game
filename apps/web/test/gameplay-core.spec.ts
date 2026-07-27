@@ -11,7 +11,9 @@ import {
   keyup,
   playerModel,
   pointerDownCanvasWorld,
+  pointerMoveCanvas,
   sceneEntities,
+  setPhoneDevice,
   setDeterministicRandom,
   targetModels,
 } from "./helpers";
@@ -163,6 +165,26 @@ describe("gameplay core", () => {
     const boosted = gameModel();
     expect(boosted.gameplayProfile.playerBoostSpeed).toBeGreaterThan(boosted.gameplayProfile.playerSpeed);
     expect(speedBeforeBoost).toBeCloseTo(1, 6);
+  });
+
+  test("mobile joystick drag updates the player direction", async () => {
+    setPhoneDevice();
+    window.localStorage.setItem("shapes-game.rulesAccepted", "true");
+    await bootApp("/shapes-game/");
+
+    const player = playerModel();
+    pointerDownCanvasWorld(player.position.x + 2, player.position.y, {
+      pointerId: 1,
+      pointerType: "touch",
+    });
+    pointerMoveCanvas(
+      (player.position.x + 2) * 30,
+      window.innerHeight - player.position.y * 30 - 60,
+      { pointerId: 1 },
+    );
+
+    expect(playerModel().movementDirection!.x).toBeCloseTo(0, 6);
+    expect(playerModel().movementDirection!.y).toBeCloseTo(1, 6);
   });
 
   test("safe target collision increases score and spawned pickups are collected", async () => {

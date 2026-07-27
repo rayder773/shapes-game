@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { createCanvasRenderer } from "../src/game/canvas-renderer.ts";
+import {
+  composeCanvasRenderers,
+  createCanvasRenderer,
+  type CanvasRenderer,
+} from "../src/game/canvas-renderer.ts";
 import type { GameReadModelEntity } from "../src/game/game-read-model.ts";
 
 type CanvasCall = {
@@ -112,6 +116,22 @@ function renderEntities(context: CanvasContextMock, entities: GameReadModelEntit
 }
 
 describe("canvas renderer", () => {
+  test("composes renderers in order", () => {
+    const order: string[] = [];
+    const createLayer = (name: string): CanvasRenderer => ({
+      render: () => order.push(name),
+    });
+
+    composeCanvasRenderers(createLayer("game"), createLayer("feedback")).render({
+      metrics: { widthCss: 300, heightCss: 180 },
+      entities: [],
+      now: () => 0,
+      isDamageInvulnerable: () => false,
+    });
+
+    expect(order).toEqual(["game", "feedback"]);
+  });
+
   test("clears the canvas before drawing entities", () => {
     const context = createContext();
 

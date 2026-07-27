@@ -196,6 +196,20 @@ export function pointerDownCanvasWorld(x: number, y: number, init: Partial<Point
   canvas.dispatchEvent(event);
 }
 
+export function pointerMoveCanvas(clientX: number, clientY: number, init: Partial<PointerEventInit> = {}) {
+  const event = new PointerEvent("pointermove", {
+    bubbles: true,
+    cancelable: true,
+    clientX,
+    clientY,
+    button: 0,
+    pointerId: 1,
+    pointerType: "touch",
+    ...init,
+  });
+  getCanvas().dispatchEvent(event);
+}
+
 export function getCanvas() {
   const canvas = document.getElementById("game");
   expect(canvas).toBeInstanceOf(HTMLCanvasElement);
