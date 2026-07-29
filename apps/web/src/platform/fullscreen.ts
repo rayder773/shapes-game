@@ -9,6 +9,7 @@ type FullscreenElement = HTMLElement & {
 
 export type FullscreenController = {
   initialize: (options?: { autoEnter?: boolean }) => void;
+  isSupported: () => boolean;
   isActive: () => boolean;
   toggle: () => Promise<boolean>;
 };
@@ -19,6 +20,10 @@ export function createFullscreenController(
 ): FullscreenController {
   let shouldEnterOnNextGesture = false;
   let hasInstalledGestureRetry = false;
+
+  function isSupported(): boolean {
+    return Boolean(root.requestFullscreen || root.webkitRequestFullscreen);
+  }
 
   function isActive(): boolean {
     return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
@@ -70,6 +75,7 @@ export function createFullscreenController(
       installGestureRetry();
       void enter();
     },
+    isSupported,
     isActive,
     async toggle() {
       shouldEnterOnNextGesture = false;

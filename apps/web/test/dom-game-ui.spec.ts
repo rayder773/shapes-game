@@ -330,6 +330,19 @@ describe("DOM game UI adapter", () => {
     ]);
   });
 
+  test("hides the fullscreen action when the browser does not support it", () => {
+    const ui = createDomGameUi({ isFullscreenSupported: () => false });
+
+    ui.render(createAppModel({
+      state: "paused",
+      overlayMode: "pause",
+      overlayView: createPauseView(),
+    }));
+
+    expect(getElement("overlay-fullscreen-button", HTMLButtonElement).hidden).toBe(true);
+    expect(getElement("overlay-install-button", HTMLButtonElement).hidden).toBe(false);
+  });
+
   test("applies app route visibility to game chrome", () => {
     const ui = createDomGameUi();
 

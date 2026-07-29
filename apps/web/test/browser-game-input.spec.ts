@@ -67,6 +67,15 @@ function setDocumentHidden(hidden: boolean): void {
   });
 }
 
+function dispatchTouchMove(target: Element): Event {
+  const event = new Event("touchmove", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "touches", {
+    value: [{ clientX: 100, clientY: 120 }],
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
 describe("browser game input", () => {
   beforeEach(() => {
     document.body.innerHTML = `<canvas id="game"></canvas><div class="modal"></div>`;
@@ -130,6 +139,24 @@ describe("browser game input", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(events).toEqual([]);
+  });
+
+  test("allows scrolling from non-interactive content inside scrollable panels", () => {
+    modal.innerHTML = `<p>Scrollable modal copy</p>`;
+    const settingsForm = document.createElement("div");
+    settingsForm.className = "settings-form";
+    settingsForm.innerHTML = `<label>Scrollable settings copy</label>`;
+    const leaderboardList = document.createElement("div");
+    leaderboardList.className = "leaderboard-list";
+    leaderboardList.innerHTML = `<span>Scrollable leaderboard copy</span>`;
+    const gameSurface = document.createElement("div");
+    document.body.append(settingsForm, leaderboardList, gameSurface);
+    installInput();
+
+    expect(dispatchTouchMove(modal.querySelector("p") as HTMLParagraphElement).defaultPrevented).toBe(false);
+    expect(dispatchTouchMove(settingsForm.querySelector("label") as HTMLLabelElement).defaultPrevented).toBe(false);
+    expect(dispatchTouchMove(leaderboardList.querySelector("span") as HTMLSpanElement).defaultPrevented).toBe(false);
+    expect(dispatchTouchMove(gameSurface).defaultPrevented).toBe(true);
   });
 
   test("emits boost request for rapid nearby second pointer event", () => {
