@@ -101,15 +101,6 @@ import type { GameEventBus, GameEventType } from "./game-events.ts";
 import { isPhoneDevice } from "../platform/device.ts";
 import { getTranslations } from "../localization/localization.ts";
 
-type FullscreenDocument = Document & {
-  webkitFullscreenElement?: Element | null;
-  webkitExitFullscreen?: () => Promise<void> | void;
-};
-
-type FullscreenElement = HTMLElement & {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-};
-
 type OpenSettingsListener = () => void;
 type OpenLeaderboardListener = () => void;
 
@@ -120,6 +111,7 @@ export type GameDomDependencies = {
   ui: DomGameUi;
   rootStyle: CSSStyleDeclaration;
   openLeaderboard?: OpenLeaderboardListener;
+  toggleFullscreen?: () => Promise<boolean>;
   events?: GameEventBus;
 };
 
@@ -144,6 +136,7 @@ let ui: DomGameUi;
 let rootStyle: CSSStyleDeclaration;
 let openLeaderboardListener: OpenLeaderboardListener | null = null;
 let gameEvents: GameEventBus | null = null;
+let toggleFullscreenListener: (() => Promise<boolean>) | null = null;
 const pwa = createPwaController();
 let openSettingsListener: OpenSettingsListener | null = null;
 const game = createRuntime({
@@ -152,7 +145,6 @@ const game = createRuntime({
   now: () => performance.now(),
 });
 let overlayMode: OverlayMode = null;
-let shouldRetryFullscreen = true;
 let hasStartedFrameLoop = false;
 let hasInitializedGameSession = false;
 let hasInstalledDomBindings = false;
@@ -391,53 +383,6 @@ function setPointerDirection(pointerX: number, pointerY: number): void {
     x: deltaX / distance,
     y: -deltaY / distance,
   });
-}
-
-function getFullscreenRoot(): FullscreenElement {
-  return document.documentElement as FullscreenElement;
-}
-
-function getFullscreenDocument(): FullscreenDocument {
-  return document as FullscreenDocument;
-}
-
-function isFullscreenActive(): boolean {
-  const fullscreenDocument = getFullscreenDocument();
-  return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
-}
-
-async function requestGameFullscreen(): Promise<boolean> {
-  if (isFullscreenActive()) {
-    shouldRetryFullscreen = false;
-    return true;
-  }
-
-  const fullscreenRoot = getFullscreenRoot();
-  const requestFullscreen = fullscreenRoot.requestFullscreen?.bind(fullscreenRoot)
-    ?? fullscreenRoot.webkitRequestFullscreen?.bind(fullscreenRoot);
-
-  if (!requestFullscreen) {
-    shouldRetryFullscreen = false;
-    return false;
-  }
-
-  try {
-    await requestFullscreen();
-    shouldRetryFullscreen = false;
-    return true;
-  } catch {
-    shouldRetryFullscreen = true;
-    return false;
-  }
-}
-
-function scheduleInitialFullscreenAttempt(): void {
-  void requestGameFullscreen();
-}
-
-function retryFullscreenOnUserGesture(): void {
-  if (!shouldRetryFullscreen || isFullscreenActive()) return;
-  void requestGameFullscreen();
 }
 
   function randomItem<T>(items: readonly T[]): T {
@@ -1211,7 +1156,6 @@ function togglePauseGame(): void {
   }
 
   function startGameSession(): void {
-    scheduleInitialFullscreenAttempt();
     restartGame();
     hasInitializedGameSession = true;
 
@@ -1251,10 +1195,7 @@ function togglePauseGame(): void {
     hasInstalledDomBindings = true;
 
     function handleBrowserInputEvent(event: BrowserGameInputEvent): void {
-      if (event.type === "user-gesture") {
-        retryFullscreenOnUserGesture();
-        return;
-      }
+      if (event.type === "user-gesture") return;
 
       if (event.type === "pause-toggle-requested") {
         togglePauseGame();
@@ -1312,7 +1253,10 @@ function togglePauseGame(): void {
     browserInput.install();
 
     function handleUiEvent(event: DomGameUiEvent): void {
-      retryFullscreenOnUserGesture();
+      if (event.type === "fullscreen-toggle") {
+        void toggleFullscreenListener?.();
+        return;
+      }
 
       if (event.type === "pause-toggle") {
         togglePauseGame();
@@ -1394,6 +1338,7 @@ function togglePauseGame(): void {
     rootStyle = dependencies.rootStyle;
     openLeaderboardListener = dependencies.openLeaderboard ?? null;
     gameEvents = dependencies.events ?? null;
+    toggleFullscreenListener = dependencies.toggleFullscreen ?? null;
     configureSettingsController({
       getSettingsEntity,
       onPersistActiveProfileSettings() {
