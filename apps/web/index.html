@@ -260,7 +260,11 @@
         inset: 0;
         display: grid;
         place-items: center;
-        padding: 24px;
+        padding:
+          calc(var(--safe-top) + 8px)
+          calc(var(--safe-right) + 8px)
+          calc(var(--safe-bottom) + 8px)
+          calc(var(--safe-left) + 8px);
         background: rgba(2, 4, 8, 0.62);
         backdrop-filter: blur(10px);
         opacity: 0;
@@ -287,6 +291,7 @@
       .modal {
         position: relative;
         width: min(100%, 380px);
+        max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 16px);
         margin-inline: auto;
         padding: 28px 24px;
         border: 1px solid var(--panel-border);
@@ -295,6 +300,9 @@
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
         text-align: center;
         touch-action: manipulation;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
       }
 
       .modal .overlay-fullscreen-button {
@@ -739,6 +747,7 @@
         min-height: 0;
         overflow-y: auto;
         padding-right: 2px;
+        scrollbar-gutter: stable;
       }
 
       .settings-slider {
@@ -837,6 +846,7 @@
           radial-gradient(circle at 18% 0%, rgba(77, 215, 255, 0.14), transparent 34%),
           linear-gradient(180deg, rgba(9, 17, 29, 0.98), rgba(8, 12, 20, 0.98));
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+        overflow: hidden;
       }
 
       .leaderboard-header {
@@ -881,6 +891,36 @@
         gap: 8px;
         padding-right: 2px;
         overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+      }
+
+      .modal,
+      .settings-form,
+      .leaderboard-list {
+        scrollbar-color: rgba(255, 209, 102, 0.72) rgba(255, 255, 255, 0.08);
+        scrollbar-width: thin;
+      }
+
+      .modal::-webkit-scrollbar,
+      .settings-form::-webkit-scrollbar,
+      .leaderboard-list::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .modal::-webkit-scrollbar-track,
+      .settings-form::-webkit-scrollbar-track,
+      .leaderboard-list::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+      }
+
+      .modal::-webkit-scrollbar-thumb,
+      .settings-form::-webkit-scrollbar-thumb,
+      .leaderboard-list::-webkit-scrollbar-thumb {
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: rgba(255, 209, 102, 0.72);
+        background-clip: padding-box;
       }
 
       .leaderboard-row {
@@ -1100,6 +1140,60 @@
           min-width: 40px;
           min-height: 40px;
           padding: 0 10px;
+        }
+
+        .overlay {
+          padding:
+            max(6px, env(safe-area-inset-top))
+            max(6px, env(safe-area-inset-right))
+            max(6px, env(safe-area-inset-bottom))
+            max(6px, env(safe-area-inset-left));
+        }
+
+        .modal {
+          max-height: calc(var(--app-height) - max(12px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+          padding: 18px 20px;
+        }
+
+        .overlay[data-variant="results"] .modal,
+        .overlay[data-variant="results-record"] .modal {
+          padding: 18px 20px;
+        }
+
+        .modal h1 {
+          font-size: 1.5rem;
+        }
+
+        .settings-page,
+        .leaderboard-overlay {
+          padding:
+            max(6px, env(safe-area-inset-top))
+            max(6px, env(safe-area-inset-right))
+            max(6px, env(safe-area-inset-bottom))
+            max(6px, env(safe-area-inset-left));
+        }
+
+        .settings-card,
+        .leaderboard-panel {
+          max-height: calc(var(--app-height) - max(12px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+          padding: 16px 18px;
+        }
+
+        .settings-title {
+          font-size: 1.5rem;
+        }
+
+        .settings-subtitle {
+          margin-bottom: 14px;
+        }
+
+        .settings-form {
+          gap: 14px;
+        }
+
+        .settings-actions {
+          margin-top: 16px;
+          padding-top: 12px;
         }
 
       }

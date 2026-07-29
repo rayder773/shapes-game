@@ -7,12 +7,20 @@ describe("fullscreen controller", () => {
     const root = { requestFullscreen } as unknown as HTMLElement;
     const controller = createFullscreenController(document, root);
 
+    expect(controller.isSupported()).toBe(true);
     controller.initialize();
     document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(requestFullscreen).not.toHaveBeenCalled();
 
     await controller.toggle();
     expect(requestFullscreen).toHaveBeenCalledOnce();
+  });
+
+  test("reports when fullscreen is unavailable for the root element", async () => {
+    const controller = createFullscreenController(document, {} as HTMLElement);
+
+    expect(controller.isSupported()).toBe(false);
+    await expect(controller.toggle()).resolves.toBe(false);
   });
 
   test("native mode retries automatic entry on the next user gesture", async () => {

@@ -63,7 +63,9 @@ const gameRenderer = composeCanvasRenderers(
   createCanvasRenderer({ context: gameContext, scale: CANVAS_WORLD_SCALE }),
   pointerFeedback,
 );
-const gameUi = createDomGameUi();
+const gameUi = createDomGameUi({
+  isFullscreenSupported: () => fullscreen.isSupported(),
+});
 const appUi = createDomAppUi({
   gameUi,
   settingsPage,

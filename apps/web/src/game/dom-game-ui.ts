@@ -28,7 +28,9 @@ function waitForMs(ms: number): Promise<void> {
   });
 }
 
-export function createDomGameUi() {
+export function createDomGameUi({
+  isFullscreenSupported = () => true,
+}: { isFullscreenSupported?: () => boolean } = {}) {
   const canvas = requireElement("game", HTMLCanvasElement, "Canvas element");
   const hudScore = requireElement("hud-score", HTMLParagraphElement, "HUD score element");
   const hudBest = requireElement("hud-best", HTMLDivElement, "HUD best score element");
@@ -298,7 +300,7 @@ export function createDomGameUi() {
 
     overlay.dataset.layout = view.layout;
     overlay.dataset.variant = view.variant;
-    overlayFullscreenButton.hidden = mode !== "pause";
+    overlayFullscreenButton.hidden = mode !== "pause" || !isFullscreenSupported();
     overlayTitle.textContent = view.title;
     overlayMessage.textContent = view.message;
     overlayMessage.hidden = view.message.length === 0;

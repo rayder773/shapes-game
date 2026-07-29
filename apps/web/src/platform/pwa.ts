@@ -302,7 +302,9 @@ export function createPwaController(): PwaController {
     getPauseInstallButtonState(): { visible: boolean; label: string } {
       return {
         visible: canShowInstallCta(),
-        label: getTranslations().action.install,
+        label: isIphoneSafari()
+          ? getTranslations().pwa.howToInstall
+          : getTranslations().action.install,
       };
     },
 

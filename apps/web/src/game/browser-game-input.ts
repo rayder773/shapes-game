@@ -47,10 +47,12 @@ const DOUBLE_TAP_ZOOM_WINDOW_MS = 350;
 const DOUBLE_TAP_ZOOM_RADIUS_PX = 24;
 const JOYSTICK_DEAD_ZONE_PX = 8;
 
-function isInteractiveElement(target: EventTarget | null): boolean {
+function allowsDocumentTouchMove(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
 
-  return Boolean(target.closest("button, a, input, select, textarea, summary, [role=\"button\"]"));
+  return Boolean(target.closest(
+    "button, a, input, select, textarea, summary, [role=\"button\"], .modal, .settings-form, .leaderboard-list",
+  ));
 }
 
 export function createBrowserGameInput({
@@ -92,7 +94,7 @@ export function createBrowserGameInput({
     }, touchOptions);
 
     document.addEventListener("touchmove", (event) => {
-      if (event.touches.length > 1 || !isInteractiveElement(event.target)) {
+      if (event.touches.length > 1 || !allowsDocumentTouchMove(event.target)) {
         event.preventDefault();
       }
     }, touchOptions);
