@@ -9,7 +9,7 @@ const ru = {
   locale: { ru: "Русский", en: "English" },
   action: {
     ok: "Понятно", resume: "Продолжить", settings: "Настройки", restart: "Начать заново",
-    leaderboard: "Топ игроков", install: "Установить", notNow: "Не сейчас",
+    leaderboard: "Топ игроков", install: "Установить", notNow: "Не сейчас", fullscreen: "Полный экран",
   },
   game: {
     hud: {

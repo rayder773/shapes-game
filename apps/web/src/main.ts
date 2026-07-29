@@ -20,6 +20,11 @@ import { createGameEventBus } from "./game/game-events.ts";
 import { installEventSounds } from "./platform/event-sounds.ts";
 import { EVENT_SOUNDS } from "./platform/event-sounds.config.ts";
 import { initializeLocale } from "./localization/localization.ts";
+import { createFullscreenController } from "./platform/fullscreen.ts";
+
+// Native shells can launch the same web build with `?fullscreen=auto`.
+// Regular browser visits keep fullscreen user-controlled.
+const AUTO_ENTER_FULLSCREEN = new URLSearchParams(window.location.search).get("fullscreen") === "auto";
 
 function getGameCanvas(): HTMLCanvasElement {
   const canvas = document.getElementById("game");
@@ -42,6 +47,8 @@ function getGameCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext
 initializeLocale();
 
 const settingsPage = createSettingsPage();
+const fullscreen = createFullscreenController(document, document.documentElement);
+fullscreen.initialize({ autoEnter: AUTO_ENTER_FULLSCREEN });
 const adminPage = createAdminPage();
 const leaderboardPanel = createLeaderboardPanel();
 const gameCanvas = getGameCanvas();
@@ -83,6 +90,7 @@ initializeGame({
   ui: gameUi,
   rootStyle: document.documentElement.style,
   events: gameEvents,
+  toggleFullscreen: () => fullscreen.toggle(),
   openLeaderboard: () => {
     void leaderboardPanel.open();
   },

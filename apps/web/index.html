@@ -285,6 +285,7 @@
       }
 
       .modal {
+        position: relative;
         width: min(100%, 380px);
         margin-inline: auto;
         padding: 28px 24px;
@@ -294,6 +295,26 @@
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
         text-align: center;
         touch-action: manipulation;
+      }
+
+      .modal .overlay-fullscreen-button {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 14px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .modal .overlay-fullscreen-button svg {
+        width: 22px;
+        height: 22px;
       }
 
       .overlay[data-layout="sheet"] .modal {
@@ -753,6 +774,7 @@
         font: inherit;
       }
 
+
       .settings-actions {
         display: flex;
         justify-content: flex-end;
@@ -1111,6 +1133,9 @@
 
     <div id="overlay" class="overlay" aria-hidden="true">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+        <button id="overlay-fullscreen-button" class="overlay-fullscreen-button" type="button" hidden>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h1 id="overlay-title"></h1>
         <p id="overlay-message"></p>
         <section id="results-screen" class="results-screen" hidden aria-live="polite">

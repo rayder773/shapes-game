@@ -273,6 +273,8 @@ describe("DOM game UI adapter", () => {
     expect(getElement("overlay-tertiary-button", HTMLButtonElement).textContent).toBe("Начать заново");
     expect(getElement("overlay-quaternary-button", HTMLButtonElement).textContent).toBe("Топ игроков");
     expect(getElement("overlay-install-button", HTMLButtonElement).hidden).toBe(false);
+    expect(getElement("overlay-fullscreen-button", HTMLButtonElement).hidden).toBe(false);
+    expect(getElement("overlay-fullscreen-button", HTMLButtonElement).getAttribute("aria-label")).toBe("Полный экран");
 
     click(getElement("pause-button", HTMLButtonElement));
     click(getElement("overlay-primary-button", HTMLButtonElement));
@@ -280,6 +282,7 @@ describe("DOM game UI adapter", () => {
     click(getElement("overlay-tertiary-button", HTMLButtonElement));
     click(getElement("overlay-quaternary-button", HTMLButtonElement));
     click(getElement("overlay-install-button", HTMLButtonElement));
+    click(getElement("overlay-fullscreen-button", HTMLButtonElement));
 
     expect(events).toEqual([
       { type: "overlay-action", action: "acceptOnboarding" },
@@ -289,6 +292,7 @@ describe("DOM game UI adapter", () => {
       { type: "overlay-action", action: "restart" },
       { type: "overlay-action", action: "openLeaderboard" },
       { type: "open-install-flow", surface: "pause" },
+      { type: "fullscreen-toggle" },
     ]);
   });
 

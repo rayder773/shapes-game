@@ -6,7 +6,7 @@ const en = {
   locale: { ru: "Русский", en: "English" },
   action: {
     ok: "Got it", resume: "Resume", settings: "Settings", restart: "Restart",
-    leaderboard: "Leaderboard", install: "Install", notNow: "Not now",
+    leaderboard: "Leaderboard", install: "Install", notNow: "Not now", fullscreen: "Fullscreen",
   },
   game: {
     hud: {
