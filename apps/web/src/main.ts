@@ -21,6 +21,7 @@ import { installEventSounds } from "./platform/event-sounds.ts";
 import { EVENT_SOUNDS } from "./platform/event-sounds.config.ts";
 import { initializeLocale } from "./localization/localization.ts";
 import { createFullscreenController } from "./platform/fullscreen.ts";
+import { createAuthCard } from "./auth/auth-card.ts";
 
 // Native shells can launch the same web build with `?fullscreen=auto`.
 // Regular browser visits keep fullscreen user-controlled.
@@ -63,8 +64,10 @@ const gameRenderer = composeCanvasRenderers(
   createCanvasRenderer({ context: gameContext, scale: CANVAS_WORLD_SCALE }),
   pointerFeedback,
 );
+const authCard = createAuthCard();
 const gameUi = createDomGameUi({
   isFullscreenSupported: () => fullscreen.isSupported(),
+  authCard,
 });
 const appUi = createDomAppUi({
   gameUi,

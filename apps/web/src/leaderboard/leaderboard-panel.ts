@@ -93,7 +93,8 @@ export function createLeaderboardPanel() {
       const row = document.createElement("div");
       row.className = "leaderboard-row";
       row.dataset.current = entry.isCurrentUser ? "true" : "false";
-      row.style.setProperty("--player-accent", getPlayerPublicAccent(entry.publicColorId));
+      const authenticated = entry.identity?.type === "authenticated" ? entry.identity : null;
+      row.style.setProperty("--player-accent", authenticated ? "#34a853" : getPlayerPublicAccent(entry.publicColorId));
 
       const rank = document.createElement("span");
       rank.className = "leaderboard-rank";
@@ -102,18 +103,25 @@ export function createLeaderboardPanel() {
       const marker = document.createElement("span");
       marker.className = "leaderboard-marker";
       marker.setAttribute("aria-hidden", "true");
+      if (authenticated) {
+        marker.classList.add("leaderboard-avatar");
+        const avatar = document.createElement("img");
+        avatar.alt = "";
+        avatar.referrerPolicy = "no-referrer";
+        if (authenticated.avatarUrl) avatar.src = authenticated.avatarUrl;
+        avatar.addEventListener("error", () => avatar.removeAttribute("src"));
+        marker.append(avatar);
+      }
 
       const name = document.createElement("span");
       name.className = "leaderboard-name";
+      const publicName = authenticated?.displayName ?? formatPlayerPublicName({
+        publicColorId: entry.publicColorId,
+        publicNameId: entry.publicNameId,
+      });
       name.textContent = entry.isCurrentUser
-        ? `${text.leaderboard.you} · ${formatPlayerPublicName({
-          publicColorId: entry.publicColorId,
-          publicNameId: entry.publicNameId,
-        })}`
-        : formatPlayerPublicName({
-          publicColorId: entry.publicColorId,
-          publicNameId: entry.publicNameId,
-        });
+        ? `${text.leaderboard.you} · ${publicName}`
+        : publicName;
 
       const score = document.createElement("strong");
       score.className = "leaderboard-score";

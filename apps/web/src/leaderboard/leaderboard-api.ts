@@ -1,4 +1,10 @@
 import { analyticsClient } from "../platform/analytics-client.ts";
+import { authHeaders } from "../auth/auth-api.ts";
+import { identityService } from "../auth/identity-service.ts";
+
+export type LeaderboardIdentity =
+  | { type: "anonymous"; publicColorId: string; publicNameId: string }
+  | { type: "authenticated"; displayName: string; avatarUrl: string | null };
 
 export type LeaderboardEntry = {
   userId: string;
@@ -7,6 +13,7 @@ export type LeaderboardEntry = {
   publicColorId: string;
   publicNameId: string;
   isCurrentUser: boolean;
+  identity: LeaderboardIdentity;
 };
 
 export type LeaderboardResponse = {
@@ -21,6 +28,7 @@ type LeaderboardApiEntry = {
   publicColorId: string;
   publicNameId: string;
   isCurrentUser: boolean;
+  identity: LeaderboardIdentity;
 };
 
 type LeaderboardApiResponse = {
@@ -62,21 +70,20 @@ export async function ensureCurrentPlayerIdentity(): Promise<CurrentPlayer | nul
     const params = new URLSearchParams({
       client_id: analyticsClient.clientId,
     });
-    const response = await fetch(`${apiBaseUrl}/players/me?${params.toString()}`);
+    const response = await fetch(`${apiBaseUrl}/players/me?${params.toString()}`, { headers: authHeaders() });
 
     if (!response.ok) return null;
     const body = await response.json() as CurrentPlayerApiResponse;
     if (
       !body.ok
       || !Number.isInteger(body.best_score)
-      || typeof body.public_color_id !== "string"
-      || typeof body.public_name_id !== "string"
+      || (!identityService.user && (typeof body.public_color_id !== "string" || typeof body.public_name_id !== "string"))
     ) return null;
 
     return {
       bestScore: body.best_score as number,
-      publicColorId: body.public_color_id,
-      publicNameId: body.public_name_id,
+      publicColorId: typeof body.public_color_id === "string" ? body.public_color_id : "blue",
+      publicNameId: typeof body.public_name_id === "string" ? body.public_name_id : "nova-fox",
     };
   } catch {
     return null;
@@ -93,6 +100,7 @@ export async function submitLeaderboardScore(score: number): Promise<number | nu
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...authHeaders(),
       },
       body: JSON.stringify({
         client_id: analyticsClient.clientId,
@@ -124,7 +132,7 @@ export async function fetchLeaderboard(options: {
     around: options.aroundCurrentUser === false ? "top" : "current",
     limit: String(options.limit ?? 20),
   });
-  const response = await fetch(`${apiBaseUrl}/leaderboard?${params.toString()}`);
+  const response = await fetch(`${apiBaseUrl}/leaderboard?${params.toString()}`, { headers: authHeaders() });
 
   if (!response.ok) {
     throw new Error("Leaderboard request failed");

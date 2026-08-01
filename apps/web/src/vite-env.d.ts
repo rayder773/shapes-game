@@ -4,6 +4,7 @@
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
   readonly VITE_ANALYTICS_ENDPOINT?: string;
+  readonly VITE_GOOGLE_CLIENT_ID?: string;
 }
 
 type AntiMatchTestEntitySnapshot = {
