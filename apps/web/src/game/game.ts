@@ -829,11 +829,11 @@ function togglePauseGame(): void {
 
         destroyFigureEntity(target);
         game.score += 1;
-        renderApp();
         trackGameplayEvent("game.target_consumed", {
           score_delta: 1,
           targets_remaining: [...game.queries.targets].length,
         });
+        renderApp();
 
         game.queues.spawns.push(...createPickupSpawnRequests({
           profile: getGameplayProfile(),
@@ -854,10 +854,10 @@ function togglePauseGame(): void {
         game.lives = Math.max(0, game.lives - 1);
         game.damageInvulnerabilityExpiresAt = performance.now() + DAMAGE_INVULNERABILITY_MS;
         game.queues.collisionEvents.length = 0;
-        renderApp();
         trackGameplayEvent("game.life_lost", {
           lives_lost: 1,
         });
+        renderApp();
       }
 
       if (command.type === "collect-life") {
@@ -873,10 +873,10 @@ function togglePauseGame(): void {
           game.lives += 1;
         }
 
-        renderApp();
         trackGameplayEvent("game.life_collected", {
           lives_added: game.lives - livesBeforeCollection,
         });
+        renderApp();
       }
 
       if (command.type === "collect-coin") {
@@ -887,10 +887,10 @@ function togglePauseGame(): void {
 
         destroyFigureEntity(coinEntity);
         game.coins += 1;
-        renderApp();
         trackGameplayEvent("game.coin_collected", {
           coins_added: 1,
         });
+        renderApp();
       }
 
       if (command.type === "game-over") {
