@@ -57,7 +57,6 @@ function allowsDocumentTouchMove(target: EventTarget | null): boolean {
 
 export function createBrowserGameInput({
   canvas,
-  modal,
   window,
   document,
   visualViewport,
@@ -109,13 +108,28 @@ export function createBrowserGameInput({
     }, touchOptions);
   }
 
-  function installDoubleTapZoomGuard(element: HTMLElement): void {
-    const touchOptions: AddEventListenerOptions = { passive: false };
+  function installDoubleTapZoomGuard(): void {
+    const captureOptions: AddEventListenerOptions = { capture: true, passive: false };
     let lastTouchEndTime = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
 
-    element.addEventListener("touchend", (event) => {
+    document.addEventListener("touchstart", (event) => {
+      if (event.touches.length !== 1) return;
+
+      const touch = event.touches[0];
+      const elapsed = event.timeStamp - lastTouchEndTime;
+      const isRapidSecondTap = elapsed > 0 && elapsed < DOUBLE_TAP_ZOOM_WINDOW_MS;
+      const isNearbyTap =
+        Math.abs(touch.clientX - lastTouchX) < DOUBLE_TAP_ZOOM_RADIUS_PX &&
+        Math.abs(touch.clientY - lastTouchY) < DOUBLE_TAP_ZOOM_RADIUS_PX;
+
+      if (isRapidSecondTap && isNearbyTap) {
+        event.preventDefault();
+      }
+    }, captureOptions);
+
+    document.addEventListener("touchend", (event) => {
       if (event.changedTouches.length !== 1) return;
 
       const touch = event.changedTouches[0];
@@ -132,7 +146,11 @@ export function createBrowserGameInput({
       if (isRapidSecondTap && isNearbyTap) {
         event.preventDefault();
       }
-    }, touchOptions);
+    }, captureOptions);
+
+    document.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+    }, captureOptions);
   }
 
   function handleDirectionalKeyEvent(event: KeyboardEvent, pressed: boolean): void {
@@ -274,7 +292,7 @@ export function createBrowserGameInput({
     canvas.addEventListener("pointercancel", finishJoystickPointer);
 
     installBrowserInteractionGuards();
-    installDoubleTapZoomGuard(modal);
+    installDoubleTapZoomGuard();
   }
 
   return {
