@@ -8,17 +8,30 @@ import {
   isKnownPublicIdentity,
   type PlayerPublicIdentity,
 } from "./player-public-identity";
+import {
+  consumeRateLimit,
+  createOrMergeGoogleUser,
+  deleteAccount,
+  resolveSession,
+  revokeSession,
+  verifyGoogleCredential,
+} from "./auth";
 
 type Bindings = {
   DB: D1Database;
   APP_ENV?: string;
   ANALYTICS_MAX_BATCH_SIZE?: string;
+  GOOGLE_CLIENT_ID?: string;
+  SESSION_TOKEN_PEPPER?: string;
+  RATE_LIMIT_SALT?: string;
 };
 
 type EventInput = {
   type: string;
   payload: unknown;
   client_created_at: string;
+  visitor_id?: string;
+  analytics_session_id?: string;
 };
 
 type ParsedEvents = {
@@ -33,6 +46,11 @@ type VisitorListRow = {
   created_at: string;
   last_event_at: string | null;
   events_count: number | string;
+  identity_type: "anonymous" | "google";
+  display_name: string | null;
+  avatar_url: string | null;
+  best_score: number;
+  linked_visitors_count: number | string;
 };
 
 type EventRow = {
@@ -41,6 +59,9 @@ type EventRow = {
   type: string;
   payload: string;
   client_created_at: string;
+  actor_type: "anonymous" | "authenticated";
+  actor_user_id: string | null;
+  analytics_session_id: string | null;
 };
 
 type VisitorLookupRow = {
@@ -53,8 +74,11 @@ type VisitorLookupRow = {
 type LeaderboardRow = {
   id: string;
   best_score: number;
-  public_color_id: string;
-  public_name_id: string;
+  identity_type: "anonymous" | "authenticated";
+  public_color_id: string | null;
+  public_name_id: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
   rank: number;
 };
 
@@ -72,7 +96,7 @@ app.use(
   "*",
   cors({
     origin: "*",
-    allowHeaders: ["content-type"],
+    allowHeaders: ["content-type", "authorization"],
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
   }),
 );
@@ -87,15 +111,78 @@ app.get("/health", (context) => {
 
 registerDevControllers(app);
 
+app.post("/auth/google", async (context) => {
+  const allowed = await consumeRateLimit(
+    context.env,
+    "google_sign_in",
+    getRequestIp(context.req.raw),
+    10,
+    10 * 60,
+  );
+  if (!allowed) return context.json({ ok: false, error: "rate_limited" }, 429);
+
+  const body = await parseJsonBody(context);
+  if (!body.ok || !isRecord(body.value)) {
+    return context.json({ ok: false, error: "invalid_json" }, 400);
+  }
+  const credential = typeof body.value.credential === "string" ? body.value.credential : "";
+  const clientId = typeof body.value.client_id === "string" ? body.value.client_id : null;
+  const localBestScore = typeof body.value.local_best_score === "number" ? body.value.local_best_score : 0;
+  if (!Number.isInteger(localBestScore) || localBestScore < 0 || localBestScore > maxBestScore) {
+    return context.json({ ok: false, error: "invalid_score" }, 400);
+  }
+  const visitor = await resolveVisitor(context, clientId);
+  if (!visitor.ok) return context.json({ ok: false, error: "invalid_visitor" }, 401);
+  const claims = await verifyGoogleCredential(credential, context.env.GOOGLE_CLIENT_ID);
+  if (!claims) return context.json({ ok: false, error: "invalid_google_credential" }, 401);
+  const result = await createOrMergeGoogleUser(context.env, claims, visitor.id, localBestScore);
+  return context.json({
+    ok: true,
+    token: result.token,
+    session_id: result.session.sessionId,
+    user: serializeUser(result.session),
+  });
+});
+
+app.get("/auth/me", async (context) => {
+  const session = await resolveSession(context.env, context.req.header("authorization"));
+  if (!session) return context.json({ ok: false, error: "invalid_session" }, 401);
+  return context.json({ ok: true, session_id: session.sessionId, user: serializeUser(session) });
+});
+
+app.post("/auth/logout", async (context) => {
+  await revokeSession(context.env, context.req.header("authorization"));
+  return context.json({ ok: true });
+});
+
+app.delete("/account", async (context) => {
+  const session = await resolveSession(context.env, context.req.header("authorization"), false);
+  if (!session) return context.json({ ok: false, error: "invalid_session" }, 401);
+  await deleteAccount(context.env, session);
+  return context.json({ ok: true });
+});
+
 app.get("/admin/api/visitors", async (context) => {
   const visitors = await context.env.DB.prepare(
     `SELECT visitors.id, visitors.ip, visitors.user_agent, visitors.created_at,
       MAX(events.client_created_at) AS last_event_at,
-      COUNT(events.id) AS events_count
+      COUNT(events.id) AS events_count, 'anonymous' AS identity_type,
+      NULL AS display_name, NULL AS avatar_url, visitors.best_score,
+      1 AS linked_visitors_count
     FROM visitors
     LEFT JOIN events ON events.visitor_id = visitors.id
+    WHERE visitors.user_id IS NULL
     GROUP BY visitors.id
-    ORDER BY COALESCE(MAX(events.id), 0) DESC, visitors.created_at DESC`,
+    UNION ALL
+    SELECT 'user:' || users.id AS id, '' AS ip, '' AS user_agent, users.created_at,
+      MAX(events.client_created_at) AS last_event_at, COUNT(DISTINCT events.id) AS events_count,
+      'google' AS identity_type, users.display_name, users.avatar_url, users.best_score,
+      COUNT(DISTINCT visitors.id) AS linked_visitors_count
+    FROM users
+    LEFT JOIN visitors ON visitors.user_id = users.id
+    LEFT JOIN events ON events.visitor_id = visitors.id
+    GROUP BY users.id
+    ORDER BY last_event_at DESC, created_at DESC`,
   ).all<VisitorListRow>();
 
   return context.json({
@@ -103,6 +190,7 @@ app.get("/admin/api/visitors", async (context) => {
     visitors: (visitors.results ?? []).map((visitor) => ({
       ...visitor,
       events_count: Number(visitor.events_count),
+      linked_visitors_count: Number(visitor.linked_visitors_count),
     })),
   });
 });
@@ -111,27 +199,32 @@ app.get("/admin/api/visitors/:visitorId/events", async (context) => {
   const visitorId = context.req.param("visitorId");
   const limit = getEventsPageLimit(context.req.query("limit"));
   const beforeId = getEventsBeforeId(context.req.query("before_id"));
-  const visitor = await context.env.DB.prepare("SELECT id FROM visitors WHERE id = ?")
-    .bind(visitorId)
-    .first<VisitorLookupRow>();
+  const isUser = visitorId.startsWith("user:");
+  const entityId = isUser ? visitorId.slice(5) : visitorId;
+  const visitor = isUser
+    ? await context.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(entityId).first<{ id: string }>()
+    : await context.env.DB.prepare("SELECT id FROM visitors WHERE id = ?").bind(entityId).first<VisitorLookupRow>();
 
   if (!visitor) {
     return context.json({ ok: false, error: "visitor_not_found" }, 404);
   }
 
+  const subjectClause = isUser
+    ? "visitor_id IN (SELECT id FROM visitors WHERE user_id = ?)"
+    : "visitor_id = ?";
   const eventsQuery = beforeId === null
-    ? `SELECT id, visitor_id, type, payload, client_created_at
+    ? `SELECT id, visitor_id, type, payload, client_created_at, actor_type, actor_user_id, analytics_session_id
       FROM events
-      WHERE visitor_id = ?
+      WHERE ${subjectClause}
       ORDER BY id DESC
       LIMIT ?`
-    : `SELECT id, visitor_id, type, payload, client_created_at
+    : `SELECT id, visitor_id, type, payload, client_created_at, actor_type, actor_user_id, analytics_session_id
       FROM events
-      WHERE visitor_id = ? AND id < ?
+      WHERE ${subjectClause} AND id < ?
       ORDER BY id DESC
       LIMIT ?`;
   const events = await context.env.DB.prepare(eventsQuery)
-    .bind(...(beforeId === null ? [visitorId, limit + 1] : [visitorId, beforeId, limit + 1]))
+    .bind(...(beforeId === null ? [entityId, limit + 1] : [entityId, beforeId, limit + 1]))
     .all<EventRow>();
   const eventRows = events.results ?? [];
   const pageRows = eventRows.slice(0, limit);
@@ -145,6 +238,9 @@ app.get("/admin/api/visitors/:visitorId/events", async (context) => {
       type: event.type,
       payload: parseEventPayload(event.payload),
       client_created_at: event.client_created_at,
+      actor_type: event.actor_type,
+      actor_user_id: event.actor_user_id,
+      analytics_session_id: event.analytics_session_id,
     })),
     next_before_id: eventRows.length > limit ? pageRows.at(-1)?.id ?? null : null,
     has_more: eventRows.length > limit,
@@ -189,22 +285,56 @@ app.post("/analytics/events", async (context) => {
     return context.json({ ok: false, error: "invalid_visitor" }, 401);
   }
 
-  const statements = events.map((event) =>
-    context.env.DB.prepare(
-      "INSERT INTO events (visitor_id, type, payload, client_created_at) VALUES (?, ?, ?, ?)",
-    ).bind(visitor.id, event.type, JSON.stringify(event.payload), event.client_created_at),
-  );
+  const statements = [];
+  for (const event of events) {
+    const eventVisitorId = event.visitor_id && uuidPattern.test(event.visitor_id)
+      ? event.visitor_id
+      : visitor.id;
+    const resolvedEventVisitor = eventVisitorId === visitor.id
+      ? visitor
+      : await resolveVisitor(context, eventVisitorId);
+    if (!resolvedEventVisitor.ok) continue;
+    const actor = event.analytics_session_id
+      ? await context.env.DB.prepare(
+        "SELECT user_id FROM sessions WHERE id = ?",
+      ).bind(event.analytics_session_id).first<{ user_id: string }>()
+      : null;
+    statements.push(context.env.DB.prepare(
+      `INSERT INTO events
+       (visitor_id, type, payload, client_created_at, actor_type, actor_user_id, analytics_session_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      resolvedEventVisitor.id,
+      event.type,
+      JSON.stringify(event.payload),
+      event.client_created_at,
+      actor ? "authenticated" : "anonymous",
+      actor?.user_id ?? null,
+      event.analytics_session_id ?? null,
+    ));
+  }
 
   await context.env.DB.batch(statements);
 
   return context.json({
     ok: true,
     visitor_id: visitor.id,
-    accepted: events.length,
+    accepted: statements.length,
   });
 });
 
 app.get("/players/me", async (context) => {
+  const authorization = context.req.header("authorization");
+  const session = await resolveSession(context.env, authorization);
+  if (authorization && !session) return context.json({ ok: false, error: "invalid_session" }, 401);
+  if (session) {
+    return context.json({
+      ok: true,
+      user_id: session.userId,
+      best_score: session.bestScore,
+      identity: { type: "authenticated", displayName: session.displayName, avatarUrl: session.avatarUrl },
+    });
+  }
   const clientId = context.req.query("client_id") ?? null;
   const visitor = await resolveVisitor(context, clientId);
 
@@ -221,6 +351,7 @@ app.get("/players/me", async (context) => {
     best_score: row?.best_score ?? 0,
     public_color_id: publicIdentity.publicColorId,
     public_name_id: publicIdentity.publicNameId,
+    identity: { type: "anonymous", publicColorId: publicIdentity.publicColorId, publicNameId: publicIdentity.publicNameId },
   });
 });
 
@@ -242,10 +373,34 @@ app.post("/scores", async (context) => {
     return context.json({ ok: false, error: "invalid_score" }, 400);
   }
 
+  const authorization = context.req.header("authorization");
+  const session = await resolveSession(context.env, authorization);
+  if (authorization && !session) return context.json({ ok: false, error: "invalid_session" }, 401);
+
   const visitor = await resolveVisitor(context, clientId);
 
   if (!visitor.ok) {
     return context.json({ ok: false, error: "invalid_visitor" }, 401);
+  }
+
+  const rateSubject = session ? `user:${session.userId}` : `visitor:${visitor.id}`;
+  if (!await consumeRateLimit(context.env, "score", rateSubject, 30, 60)) {
+    return context.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
+  if (session) {
+    const bestScore = Math.max(session.bestScore, score);
+    if (bestScore !== session.bestScore) {
+      await context.env.DB.prepare(
+        "UPDATE users SET best_score = ?, best_score_updated_at = ? WHERE id = ?",
+      ).bind(bestScore, new Date().toISOString(), session.userId).run();
+    }
+    await context.env.DB.prepare("UPDATE visitors SET user_id = ? WHERE id = ?")
+      .bind(session.userId, visitor.id).run();
+    return context.json({
+      ok: true, user_id: session.userId, score, best_score: bestScore,
+      identity: { type: "authenticated", displayName: session.displayName, avatarUrl: session.avatarUrl },
+    });
   }
 
   const publicIdentity = await ensureVisitorPublicIdentity(context, visitor.id);
@@ -272,14 +427,17 @@ app.post("/scores", async (context) => {
 });
 
 app.get("/leaderboard", async (context) => {
+  const authorization = context.req.header("authorization");
+  const session = await resolveSession(context.env, authorization);
+  if (authorization && !session) return context.json({ ok: false, error: "invalid_session" }, 401);
   const clientId = context.req.query("client_id") ?? null;
   const limit = getLeaderboardLimit(context.req.query("limit"));
   const around = context.req.query("around") === "current" ? "current" : "top";
   const visitor = clientId ? await resolveVisitor(context, clientId) : { ok: false } as const;
-  const currentUserId = visitor.ok ? visitor.id : null;
+  const currentUserId = session ? `user:${session.userId}` : visitor.ok ? `visitor:${visitor.id}` : null;
 
-  if (currentUserId) {
-    await ensureVisitorPublicIdentity(context, currentUserId);
+  if (visitor.ok && !session) {
+    await ensureVisitorPublicIdentity(context, visitor.id);
   }
 
   const currentRank = currentUserId ? await getLeaderboardRank(context, currentUserId) : null;
@@ -296,6 +454,9 @@ app.get("/leaderboard", async (context) => {
       userId: row.id,
       rank: row.rank,
       score: row.best_score,
+      identity: row.identity_type === "authenticated"
+        ? { type: "authenticated", displayName: row.display_name, avatarUrl: row.avatar_url }
+        : { type: "anonymous", publicColorId: row.public_color_id, publicNameId: row.public_name_id },
       publicColorId: row.public_color_id,
       publicNameId: row.public_name_id,
       isCurrentUser: row.id === currentUserId,
@@ -384,6 +545,10 @@ function parseEvents(
       type: event.type.trim(),
       payload: event.payload,
       client_created_at: event.client_created_at,
+      visitor_id: typeof event.visitor_id === "string" ? event.visitor_id : undefined,
+      analytics_session_id: typeof event.analytics_session_id === "string"
+        ? event.analytics_session_id
+        : undefined,
     });
   }
 
@@ -505,12 +670,13 @@ async function findAvailablePublicIdentity(
 
 async function getLeaderboardRank(context: AppContext, visitorId: string): Promise<number | null> {
   const row = await context.env.DB.prepare(
-    `WITH ranked AS (
-      SELECT
-        id,
-        ROW_NUMBER() OVER (ORDER BY best_score DESC, created_at ASC, id ASC) AS rank
-      FROM visitors
-      WHERE best_score > 0 AND public_color_id IS NOT NULL AND public_name_id IS NOT NULL
+    `WITH combined AS (
+      SELECT 'visitor:' || id AS id, best_score, created_at FROM visitors
+      WHERE user_id IS NULL AND best_score > 0 AND public_color_id IS NOT NULL AND public_name_id IS NOT NULL
+      UNION ALL
+      SELECT 'user:' || id AS id, best_score, created_at FROM users WHERE best_score > 0
+    ), ranked AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY best_score DESC, created_at ASC, id ASC) AS rank FROM combined
     )
     SELECT rank FROM ranked WHERE id = ?`,
   )
@@ -526,17 +692,19 @@ async function getLeaderboardRows(
   offset: number,
 ): Promise<LeaderboardRow[]> {
   const rows = await context.env.DB.prepare(
-    `WITH ranked AS (
-      SELECT
-        id,
-        best_score,
-        public_color_id,
-        public_name_id,
-        ROW_NUMBER() OVER (ORDER BY best_score DESC, created_at ASC, id ASC) AS rank
+    `WITH combined AS (
+      SELECT 'visitor:' || id AS id, best_score, created_at, 'anonymous' AS identity_type,
+        public_color_id, public_name_id, NULL AS display_name, NULL AS avatar_url
       FROM visitors
-      WHERE best_score > 0 AND public_color_id IS NOT NULL AND public_name_id IS NOT NULL
+      WHERE user_id IS NULL AND best_score > 0 AND public_color_id IS NOT NULL AND public_name_id IS NOT NULL
+      UNION ALL
+      SELECT 'user:' || id AS id, best_score, created_at, 'authenticated' AS identity_type,
+        NULL AS public_color_id, NULL AS public_name_id, display_name, avatar_url
+      FROM users WHERE best_score > 0
+    ), ranked AS (
+      SELECT *, ROW_NUMBER() OVER (ORDER BY best_score DESC, created_at ASC, id ASC) AS rank FROM combined
     )
-    SELECT id, best_score, public_color_id, public_name_id, rank
+    SELECT id, best_score, identity_type, public_color_id, public_name_id, display_name, avatar_url, rank
     FROM ranked
     ORDER BY rank ASC
     LIMIT ? OFFSET ?`,
@@ -592,6 +760,20 @@ function parseEventPayload(payload: string): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function serializeUser(session: {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bestScore: number;
+}) {
+  return {
+    id: session.userId,
+    display_name: session.displayName,
+    avatar_url: session.avatarUrl,
+    best_score: session.bestScore,
+  };
 }
 
 export default app;

@@ -309,7 +309,7 @@
       .modal .overlay-fullscreen-button {
         position: absolute;
         top: 12px;
-        right: 12px;
+        left: 12px;
         width: 44px;
         height: 44px;
         display: grid;
@@ -324,6 +324,28 @@
       .modal .overlay-fullscreen-button svg {
         width: 22px;
         height: 22px;
+      }
+
+      .modal .overlay-close-button {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 14px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 1.5rem;
+        font-weight: 500;
+        line-height: 1;
+      }
+
+      .modal .overlay-close-button:hover {
+        background: rgba(255, 255, 255, 0.14);
       }
 
       .overlay[data-layout="sheet"] .modal {
@@ -926,9 +948,9 @@
 
       .leaderboard-row {
         display: grid;
-        grid-template-columns: 62px 16px minmax(0, 1fr) auto;
+        grid-template-columns: 4ch 28px minmax(0, 1fr) auto;
         align-items: center;
-        gap: 12px;
+        gap: 10px;
         min-height: 54px;
         padding: 12px 14px;
         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -955,6 +977,7 @@
       }
 
       .leaderboard-marker {
+        justify-self: center;
         width: 11px;
         height: 11px;
         border-radius: 999px;
@@ -1015,8 +1038,8 @@
         }
 
         .leaderboard-row {
-          grid-template-columns: 48px 12px minmax(0, 1fr) auto;
-          gap: 9px;
+          grid-template-columns: 4ch 28px minmax(0, 1fr) auto;
+          gap: 8px;
           padding: 11px 10px;
         }
       }
@@ -1198,6 +1221,48 @@
         }
 
       }
+      .auth-card {
+        position: relative;
+        margin-top: 18px;
+        padding: 15px;
+        overflow: hidden;
+        border: 1px solid rgba(123, 174, 255, .22);
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 90% 0, rgba(66, 133, 244, .2), transparent 46%),
+          linear-gradient(145deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .035));
+        box-shadow: 0 12px 30px rgba(0, 0, 0, .16), inset 0 1px rgba(255, 255, 255, .08);
+      }
+      .auth-card-heading { display: flex; align-items: center; gap: 11px; text-align: left; }
+      .auth-card-heading > div { display: grid; gap: 2px; min-width: 0; }
+      .auth-card-heading strong { color: rgba(255,255,255,.96); font-size: .92rem; }
+      .auth-card-heading span:not(.auth-card-icon) { color: rgba(231,239,255,.66); font-size: .75rem; line-height: 1.35; }
+      .auth-card-icon {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        flex: none;
+        place-items: center;
+        border: 1px solid rgba(143, 188, 255, .3);
+        border-radius: 11px;
+        color: #dceaff;
+        background: linear-gradient(145deg, rgba(66,133,244,.42), rgba(52,168,83,.2));
+        box-shadow: 0 8px 20px rgba(29, 78, 160, .24);
+        font-weight: 900;
+      }
+      .auth-error { margin: 9px 0 0; color: #ffb4ab; font-size: .78rem; line-height: 1.35; }
+      .google-signin-slot { min-height: 44px; margin-top: 13px; display: flex; justify-content: center; align-items: center; }
+      .google-signin-slot > div { max-width: 100%; }
+      .auth-profile { display: flex; align-items: center; gap: 11px; margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.1); text-align: left; }
+      .auth-profile div { display: grid; min-width: 0; }
+      .auth-profile strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .auth-profile span { font-size: .75rem; opacity: .68; }
+      .auth-avatar, .leaderboard-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg,#4285f4,#34a853); overflow: hidden; flex: none; }
+      .auth-avatar img, .leaderboard-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .auth-avatar img:not([src]), .leaderboard-avatar img:not([src]) { visibility: hidden; }
+      .auth-actions { display: flex; gap: 8px; margin-top: 12px; }
+      .auth-actions button { flex: 1; min-height: 38px; border-radius: 12px; font-size: .78rem; }
+      .leaderboard-marker.leaderboard-avatar { width: 28px; height: 28px; }
     </style>
   </head>
   <body>
@@ -1231,6 +1296,7 @@
         <button id="overlay-fullscreen-button" class="overlay-fullscreen-button" type="button" hidden>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
+        <button id="overlay-close-button" class="overlay-close-button" type="button" hidden aria-label="Close">×</button>
         <h1 id="overlay-title"></h1>
         <p id="overlay-message"></p>
         <section id="results-screen" class="results-screen" hidden aria-live="polite">

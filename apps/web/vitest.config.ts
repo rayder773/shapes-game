@@ -35,6 +35,10 @@ Object.defineProperty(window, "__ANTI_MATCH_TEST__", {
 
 export default defineConfig({
   base: "/shapes-game/",
+  define: {
+    "import.meta.env.VITE_API_BASE_URL": JSON.stringify(""),
+    "import.meta.env.VITE_GOOGLE_CLIENT_ID": JSON.stringify(""),
+  },
   resolve: {
     alias: {
       "virtual:pwa-register": "/test/stubs/pwa-register.ts",

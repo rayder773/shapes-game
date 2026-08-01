@@ -1,4 +1,5 @@
 import type { GameEventType } from "../game/game-events.ts";
+import { identityService } from "../auth/identity-service.ts";
 
 export type AnalyticsEventType = GameEventType;
 
@@ -8,6 +9,8 @@ export type AnalyticsEvent = {
   type: AnalyticsEventType;
   payload: AnalyticsPayload;
   client_created_at: string;
+  visitor_id?: string;
+  analytics_session_id?: string;
 };
 
 type AnalyticsEnvelope = {
@@ -31,6 +34,7 @@ type AnalyticsClientOptions = {
   flushBatchSize?: number;
   flushDelayMs?: number;
   maxStoredEvents?: number;
+  useSharedIdentity?: boolean;
 };
 
 const CLIENT_ID_STORAGE_KEY = "shapes-game.analytics.clientId";
@@ -117,7 +121,7 @@ export class AnalyticsClient {
     this.flushBatchSize = options.flushBatchSize ?? DEFAULT_FLUSH_BATCH_SIZE;
     this.flushDelayMs = options.flushDelayMs ?? DEFAULT_FLUSH_DELAY_MS;
     this.maxStoredEvents = options.maxStoredEvents ?? DEFAULT_MAX_STORED_EVENTS;
-    this.clientId = this.getOrCreateClientId();
+    this.clientId = options.useSharedIdentity ? identityService.currentVisitorId : this.getOrCreateClientId();
     this.sessionId = this.uuid();
     this.queue = readStoredEvents(this.storage);
     if (this.queue.length > 0) {
@@ -136,6 +140,8 @@ export class AnalyticsClient {
       type,
       payload,
       client_created_at: this.now().toISOString(),
+      visitor_id: this.clientId,
+      ...(identityService.sessionId ? { analytics_session_id: identityService.sessionId } : {}),
     });
     this.persistQueue();
 
@@ -200,12 +206,11 @@ export class AnalyticsClient {
   }
 
   private getOrCreateClientId(): string {
-    const existingClientId = this.storage.getItem(CLIENT_ID_STORAGE_KEY);
-    if (existingClientId) return existingClientId;
-
-    const clientId = this.uuid();
-    this.storage.setItem(CLIENT_ID_STORAGE_KEY, clientId);
-    return clientId;
+    const existing = this.storage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const id = this.uuid();
+    this.storage.setItem(CLIENT_ID_STORAGE_KEY, id);
+    return id;
   }
 
   private createEnvelope(events: AnalyticsEvent[]): AnalyticsEnvelope {
@@ -263,6 +268,7 @@ export class AnalyticsClient {
 
 export const analyticsClient = new AnalyticsClient({
   endpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT,
+  useSharedIdentity: true,
 });
 
 export function trackAnalyticsEvent(type: AnalyticsEventType, payload: AnalyticsPayload): void {

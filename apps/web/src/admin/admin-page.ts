@@ -289,12 +289,15 @@ export function createAdminPage(): AdminPageController {
       .map(
         (visitor) => {
           const isDeleting = state.deletingVisitorId === visitor.id;
+          const isGoogle = visitor.identity_type === "google";
 
           return `
           <tr data-admin-visitor-id="${escapeHtml(visitor.id)}" class="${visitor.id === state.selectedVisitorId ? "is-selected" : ""}" tabindex="0">
             <td>
-              <strong>${escapeHtml(shortId(visitor.id))}</strong>
+              <strong>${escapeHtml(isGoogle ? visitor.display_name ?? shortId(visitor.id) : shortId(visitor.id))}</strong>
+              <span class="admin-identity-badge ${isGoogle ? "is-google" : ""}">${isGoogle ? "Google" : "Anonymous"}</span>
               <span class="admin-table-meta">${escapeHtml(visitor.id)}</span>
+              ${isGoogle ? `<span class="admin-table-meta">${visitor.linked_visitors_count ?? 0} visitors · best ${visitor.best_score ?? 0}</span>` : ""}
             </td>
             <td>${escapeHtml(visitor.ip || text.admin.noIp)}</td>
             <td class="admin-user-agent">${escapeHtml(visitor.user_agent || text.admin.noUserAgent)}</td>
@@ -302,14 +305,14 @@ export function createAdminPage(): AdminPageController {
             <td>${escapeHtml(visitor.last_event_at ? formatDateTime(visitor.last_event_at) : text.admin.noEvents)}</td>
             <td>${escapeHtml(formatDateTime(visitor.created_at))}</td>
             <td>
-              <button
+              ${isGoogle ? `<span class="admin-table-meta">${text.admin.readOnly}</span>` : `<button
                 class="admin-button admin-button-danger"
                 type="button"
                 data-admin-delete-visitor="${escapeHtml(visitor.id)}"
                 ${isDeleting ? "disabled" : ""}
               >
                 ${isDeleting ? text.admin.deleting : text.admin.delete}
-              </button>
+              </button>`}
             </td>
           </tr>
         `;
@@ -337,7 +340,7 @@ export function createAdminPage(): AdminPageController {
         (event) => `
           <tr>
             <td>#${event.id}</td>
-            <td><strong>${escapeHtml(event.type)}</strong></td>
+            <td><strong>${escapeHtml(event.type)}</strong><span class="admin-identity-badge ${event.actor_type === "authenticated" ? "is-google" : ""}">${event.actor_type === "authenticated" ? (event.actor_user_id ? "Authenticated" : "Authenticated (deleted)") : "Anonymous"}</span><span class="admin-table-meta">${escapeHtml(event.visitor_id)}</span></td>
             <td>${escapeHtml(formatDateTime(event.client_created_at))}</td>
             <td><pre>${escapeHtml(JSON.stringify(event.payload, null, 2))}</pre></td>
           </tr>
@@ -580,6 +583,19 @@ function injectAdminStyles(): void {
       font-size: 0.78rem;
       overflow-wrap: anywhere;
     }
+
+    .admin-identity-badge {
+      display: inline-block;
+      margin: 4px 6px 0 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #4b5563;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .admin-identity-badge.is-google { background: #dcfce7; color: #166534; }
 
     .admin-user-agent {
       max-width: 420px;

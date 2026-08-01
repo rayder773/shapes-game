@@ -50,6 +50,15 @@ const en = {
     noNeighbors: "There are no nearby results yet.", bestResults: "Best results",
     currentRank: (rank: number) => `Your rank: #${rank}`, you: "You",
   },
+  auth: {
+    title: "Save your progress", intro: "Keep one best score across all your devices.",
+    connectedTitle: "Progress is synced", connectedHint: "Your best score belongs to this Google account.",
+    signedIn: "Google account",
+    signingIn: "Signing in...", logout: "Sign out", deleteAccount: "Delete account",
+    deleteConfirm: "Delete your Google game account and shared best score? This cannot be undone.",
+    sdkError: "Google Sign-In could not be loaded.", signInError: "Could not sign in with Google.",
+    offlineError: "You are offline. Your current match is safe.", deleteError: "Could not delete the account.",
+  },
   pwa: {
     postGameMessage: "Install AntiMatch to jump into a new match with one tap and play without extra browser controls.",
     pauseMessage: "Install the game to launch it as a standalone app and return to a match faster.",
@@ -74,7 +83,7 @@ const en = {
     selectUser: "Select a user.", loadingEvents: "Loading events...",
     userHasNoEvents: "This user has no events yet.", loadingMoreEvents: "Loading more events...",
     scrollForMore: "Scroll down to load more.", allEventsLoaded: "All events are loaded.",
-    unknownError: "Unknown error",
+    unknownError: "Unknown error", readOnly: "Read only",
     error: { loadUsers: "Could not load users", loadEvents: "Could not load user events", deleteUser: "Could not delete user" },
   },
 };

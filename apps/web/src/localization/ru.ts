@@ -53,6 +53,15 @@ const ru = {
     noNeighbors: "Пока нет соседних результатов.", bestResults: "Лучшие результаты",
     currentRank: (rank: number) => `Твоя позиция: #${rank}`, you: "Ты",
   },
+  auth: {
+    title: "Сохранить прогресс", intro: "Один рекорд на всех ваших устройствах.",
+    connectedTitle: "Прогресс синхронизирован", connectedHint: "Рекорд сохранён в этом Google-аккаунте.",
+    signedIn: "Аккаунт Google",
+    signingIn: "Входим...", logout: "Выйти", deleteAccount: "Удалить аккаунт",
+    deleteConfirm: "Удалить игровой Google-аккаунт и общий рекорд? Это действие нельзя отменить.",
+    sdkError: "Не удалось загрузить Google Sign-In.", signInError: "Не удалось войти через Google.",
+    offlineError: "Нет сети. Текущий матч не пострадает.", deleteError: "Не удалось удалить аккаунт.",
+  },
   pwa: {
     postGameMessage: "Установите AntiMatch, чтобы возвращаться в новый матч в один тап и играть без лишней браузерной обвязки.",
     pauseMessage: "Установите игру, чтобы запускать ее как отдельное приложение и быстрее возвращаться в матч.",
@@ -77,7 +86,7 @@ const ru = {
     selectUser: "Выберите пользователя.", loadingEvents: "Загружаем события...",
     userHasNoEvents: "У пользователя пока нет событий.", loadingMoreEvents: "Загружаем еще события...",
     scrollForMore: "Прокрутите ниже, чтобы загрузить еще.", allEventsLoaded: "Все события загружены.",
-    unknownError: "Неизвестная ошибка",
+    unknownError: "Неизвестная ошибка", readOnly: "Только просмотр",
     error: { loadUsers: "Не удалось загрузить пользователей", loadEvents: "Не удалось загрузить события пользователя", deleteUser: "Не удалось удалить пользователя" },
   },
 } satisfies TranslationShape<EnglishTranslations>;

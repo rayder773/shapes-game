@@ -30,7 +30,11 @@ function waitForMs(ms: number): Promise<void> {
 
 export function createDomGameUi({
   isFullscreenSupported = () => true,
-}: { isFullscreenSupported?: () => boolean } = {}) {
+  authCard,
+}: {
+  isFullscreenSupported?: () => boolean;
+  authCard?: { element: HTMLElement; setVisible: (visible: boolean) => void };
+} = {}) {
   const canvas = requireElement("game", HTMLCanvasElement, "Canvas element");
   const hudScore = requireElement("hud-score", HTMLParagraphElement, "HUD score element");
   const hudBest = requireElement("hud-best", HTMLDivElement, "HUD best score element");
@@ -52,8 +56,10 @@ export function createDomGameUi({
     throw new Error("Modal element not found");
   }
   const modal = modalElement;
+  if (authCard) modal.append(authCard.element);
   const overlayTitle = requireElement("overlay-title", HTMLHeadingElement, "Overlay title element");
   const overlayFullscreenButton = requireElement("overlay-fullscreen-button", HTMLButtonElement, "Fullscreen button element");
+  const overlayCloseButton = requireElement("overlay-close-button", HTMLButtonElement, "Overlay close button element");
   const overlayMessage = requireElement("overlay-message", HTMLParagraphElement, "Overlay message element");
   const resultsScreen = requireElement("results-screen", HTMLElement, "Results screen element");
   const resultsBaseRow = requireElement("results-base-row", HTMLDivElement, "Results base row element");
@@ -286,6 +292,7 @@ export function createDomGameUi({
     overlayInstallButton.hidden = true;
     overlayFooter.hidden = true;
     overlayFullscreenButton.hidden = true;
+    overlayCloseButton.hidden = true;
     resetResultsScreen();
     overlay.classList.remove("visible");
     overlay.setAttribute("aria-hidden", "true");
@@ -293,6 +300,7 @@ export function createDomGameUi({
   }
 
   function renderOverlay(view: GameReadModelOverlayView | null, mode: AppReadModel["game"]["overlay"]["mode"]): void {
+    authCard?.setVisible(mode === "pause" || mode === "gameOver");
     if (!view) {
       clearOverlay();
       return;
@@ -301,6 +309,7 @@ export function createDomGameUi({
     overlay.dataset.layout = view.layout;
     overlay.dataset.variant = view.variant;
     overlayFullscreenButton.hidden = mode !== "pause" || !isFullscreenSupported();
+    overlayCloseButton.hidden = mode !== "pause";
     overlayTitle.textContent = view.title;
     overlayMessage.textContent = view.message;
     overlayMessage.hidden = view.message.length === 0;
@@ -366,6 +375,10 @@ export function createDomGameUi({
     emit({ type: "fullscreen-toggle" });
   });
 
+  overlayCloseButton.addEventListener("click", () => {
+    emit({ type: "overlay-action", action: "resume" });
+  });
+
   for (const button of [...overlayButtons, overlayFooterButton]) {
     button.addEventListener("click", () => {
       const action = button.dataset.action as GameReadModelOverlayAction | undefined;
@@ -396,6 +409,7 @@ export function createDomGameUi({
       pauseButton.textContent = model.game.state === "paused" ? "▶" : "II";
       pauseButton.setAttribute("aria-label", model.game.state === "paused" ? text.game.pause.resumeAria : text.game.pause.openAria);
       overlayFullscreenButton.setAttribute("aria-label", text.action.fullscreen);
+      overlayCloseButton.setAttribute("aria-label", text.game.pause.resumeAria);
       resultsBaseLabel.textContent = text.game.results.baseScore;
       resultsCoinsLabel.textContent = text.game.results.coins;
       resultsBonusLabel.textContent = text.game.results.bonus;

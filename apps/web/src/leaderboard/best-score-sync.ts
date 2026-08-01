@@ -2,10 +2,12 @@ import {
   ensureCurrentPlayerIdentity,
   submitLeaderboardScore,
 } from "./leaderboard-api.ts";
+import { identityService } from "../auth/identity-service.ts";
 
 export const MAX_BEST_SCORE = 1_000_000;
 export const BEST_SCORE_STORAGE_KEY = "shapes-game.bestScore";
 export const SYNCED_BEST_SCORE_STORAGE_KEY = "shapes-game.leaderboardSyncedBestScore";
+const LEGACY_BEST_SCORE_MIGRATED_KEY = "shapes-game.bestScoreScopedMigration";
 
 type BestScoreListener = (bestScore: number | null) => void;
 
@@ -21,13 +23,31 @@ function parseBestScore(rawValue: string | null): number | null {
 
 function writeScore(key: string, score: number): void {
   window.localStorage.setItem(key, String(score));
+  if (key.startsWith(`${BEST_SCORE_STORAGE_KEY}.`) && !identityService.user) {
+    window.localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(score));
+  }
+}
+
+function scopedKey(baseKey: string): string {
+  return `${baseKey}.${identityService.scoreScope}`;
+}
+
+function migrateLegacyBestScore(): void {
+  if (identityService.user) return;
+  if (window.localStorage.getItem(LEGACY_BEST_SCORE_MIGRATED_KEY) === "true") return;
+  const key = scopedKey(BEST_SCORE_STORAGE_KEY);
+  if (window.localStorage.getItem(key) === null) {
+    const legacy = parseBestScore(window.localStorage.getItem(BEST_SCORE_STORAGE_KEY));
+    if (legacy !== null) writeScore(key, legacy);
+  }
+  window.localStorage.setItem(LEGACY_BEST_SCORE_MIGRATED_KEY, "true");
 }
 
 function saveConfirmedServerBestScore(score: number): void {
   const confirmedBest = parseBestScore(
-    window.localStorage.getItem(SYNCED_BEST_SCORE_STORAGE_KEY),
+    window.localStorage.getItem(scopedKey(SYNCED_BEST_SCORE_STORAGE_KEY)),
   );
-  writeScore(SYNCED_BEST_SCORE_STORAGE_KEY, Math.max(confirmedBest ?? 0, score));
+  writeScore(scopedKey(SYNCED_BEST_SCORE_STORAGE_KEY), Math.max(confirmedBest ?? 0, score));
 }
 
 function publish(bestScore: number | null): void {
@@ -36,14 +56,15 @@ function publish(bestScore: number | null): void {
 
 export function readLocalBestScore(): number | null {
   if (typeof window === "undefined") return null;
-  return parseBestScore(window.localStorage.getItem(BEST_SCORE_STORAGE_KEY));
+  migrateLegacyBestScore();
+  return parseBestScore(window.localStorage.getItem(scopedKey(BEST_SCORE_STORAGE_KEY)));
 }
 
 export function saveLocalBestScore(score: number): boolean {
   if (!Number.isInteger(score) || score < 0 || score > MAX_BEST_SCORE) return false;
   const current = readLocalBestScore();
   if (current !== null && score <= current) return false;
-  writeScore(BEST_SCORE_STORAGE_KEY, score);
+  writeScore(scopedKey(BEST_SCORE_STORAGE_KEY), score);
   publish(score);
   return true;
 }
@@ -71,7 +92,7 @@ async function performSync(): Promise<number | null> {
 
     resolvedBest = Math.max(localBest ?? 0, serverBest);
     if (localBest === null || resolvedBest > localBest) {
-      writeScore(BEST_SCORE_STORAGE_KEY, resolvedBest);
+      writeScore(scopedKey(BEST_SCORE_STORAGE_KEY), resolvedBest);
       publish(resolvedBest);
     }
     saveConfirmedServerBestScore(serverBest);

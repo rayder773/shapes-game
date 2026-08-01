@@ -5,6 +5,11 @@ export type VisitorRecord = {
   created_at: string;
   last_event_at: string | null;
   events_count: number;
+  identity_type?: "anonymous" | "google";
+  display_name?: string | null;
+  avatar_url?: string | null;
+  best_score?: number;
+  linked_visitors_count?: number;
 };
 
 export type EventRecord = {
@@ -13,6 +18,9 @@ export type EventRecord = {
   type: string;
   payload: unknown;
   client_created_at: string;
+  actor_type?: "anonymous" | "authenticated";
+  actor_user_id?: string | null;
+  analytics_session_id?: string | null;
 };
 
 type VisitorsResponse = {
