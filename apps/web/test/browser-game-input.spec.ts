@@ -76,6 +76,34 @@ function dispatchTouchMove(target: Element): Event {
   return event;
 }
 
+function dispatchTouchEnd(target: Element, timeStamp: number, clientX = 100, clientY = 120): Event {
+  const event = new Event("touchend", { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    changedTouches: {
+      value: [{ clientX, clientY }],
+    },
+    timeStamp: {
+      value: timeStamp,
+    },
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
+function dispatchTouchStart(target: Element, timeStamp: number, clientX = 100, clientY = 120): Event {
+  const event = new Event("touchstart", { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    touches: {
+      value: [{ clientX, clientY }],
+    },
+    timeStamp: {
+      value: timeStamp,
+    },
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
 describe("browser game input", () => {
   beforeEach(() => {
     document.body.innerHTML = `<canvas id="game"></canvas><div class="modal"></div>`;
@@ -157,6 +185,31 @@ describe("browser game input", () => {
     expect(dispatchTouchMove(settingsForm.querySelector("label") as HTMLLabelElement).defaultPrevented).toBe(false);
     expect(dispatchTouchMove(leaderboardList.querySelector("span") as HTMLSpanElement).defaultPrevented).toBe(false);
     expect(dispatchTouchMove(gameSurface).defaultPrevented).toBe(true);
+  });
+
+  test("prevents double-tap zoom before the second tap starts outside the modal", () => {
+    const htmlSurface = document.createElement("div");
+    document.body.append(htmlSurface);
+    installInput();
+
+    const firstTapStart = dispatchTouchStart(htmlSurface, 1_000);
+    const firstTapEnd = dispatchTouchEnd(htmlSurface, 1_050);
+    const secondTapStart = dispatchTouchStart(htmlSurface, 1_200, 108, 126);
+
+    expect(firstTapStart.defaultPrevented).toBe(false);
+    expect(firstTapEnd.defaultPrevented).toBe(false);
+    expect(secondTapStart.defaultPrevented).toBe(true);
+  });
+
+  test("prevents the synthetic double-click used for browser smart zoom", () => {
+    const modalContent = document.createElement("p");
+    modal.append(modalContent);
+    installInput();
+
+    const doubleClick = new MouseEvent("dblclick", { bubbles: true, cancelable: true });
+    modalContent.dispatchEvent(doubleClick);
+
+    expect(doubleClick.defaultPrevented).toBe(true);
   });
 
   test("emits boost request for rapid nearby second pointer event", () => {
