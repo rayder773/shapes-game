@@ -34,7 +34,8 @@ export type GameplaySettingsValues = {
 };
 
 export const DEFAULT_TARGET_GROWTH_SCORE_STEP = 3;
-export const GAMEPLAY_SETTINGS_STORAGE_KEY = "shapes-game.gameplaySettings";
+export const GAMEPLAY_SETTINGS_STORAGE_KEY = "shapes-game.remoteGameplaySettings";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
 
 const GAMEPLAY_SETTINGS_LIMITS: Record<keyof GameplaySettingsValues, { min: number; max: number }> = {
   targetSpeed: { min: 0, max: 30 },
@@ -147,7 +148,8 @@ export function loadSavedGameplaySettings(): SavedGameplaySettings {
       return createEmptySavedGameplaySettings();
     }
 
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const stored = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = (stored.config && typeof stored.config === "object" ? stored.config : stored) as Record<string, unknown>;
     return {
       compactTouch: sanitizeGameplayProfileOverrides(parsed.compactTouch),
       desktop: sanitizeGameplayProfileOverrides(parsed.desktop),
@@ -157,10 +159,33 @@ export function loadSavedGameplaySettings(): SavedGameplaySettings {
   }
 }
 
-export function saveGameplaySettings(settings: SavedGameplaySettings): void {
+export async function refreshGameplaySettings(timeoutMs = 3_000): Promise<SavedGameplaySettings | null> {
+  if (navigator.onLine === false) return null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${apiBaseUrl}/game-settings`, { signal: controller.signal });
+    const body = await response.json() as { ok?: boolean; version?: unknown; config?: unknown };
+    if (!response.ok || body.ok !== true || !Number.isInteger(body.version) || !body.config || typeof body.config !== "object") return null;
+    const config = body.config as Record<string, unknown>;
+    const settings = {
+      compactTouch: sanitizeGameplayProfileOverrides(config.compactTouch),
+      desktop: sanitizeGameplayProfileOverrides(config.desktop),
+    };
+    if (Object.keys(settings.compactTouch).length !== 11 || Object.keys(settings.desktop).length !== 11) return null;
+    cacheGameplaySettings(settings, body.version as number);
+    return settings;
+  } catch { return null; }
+  finally { window.clearTimeout(timeout); }
+}
+
+function cacheGameplaySettings(settings: SavedGameplaySettings, version: number): void {
   window.localStorage.setItem(GAMEPLAY_SETTINGS_STORAGE_KEY, JSON.stringify({
-    compactTouch: sanitizeGameplayProfileOverrides(settings.compactTouch),
-    desktop: sanitizeGameplayProfileOverrides(settings.desktop),
+    version,
+    config: {
+      compactTouch: sanitizeGameplayProfileOverrides(settings.compactTouch),
+      desktop: sanitizeGameplayProfileOverrides(settings.desktop),
+    },
   }));
 }
 
@@ -184,57 +209,4 @@ export function applyGameplayOverrides(
     startLives: Math.min(startLives, maxLives),
     maxLives,
   };
-}
-
-export function createPersistableOverrides(
-  values: GameplaySettingsValues,
-  defaults: GameplaySettingsValues,
-): GameplayProfileOverrides {
-  const overrides: GameplayProfileOverrides = {};
-
-  if (values.targetSpeed !== defaults.targetSpeed) {
-    overrides.targetSpeed = clampGameplaySettingValue(values.targetSpeed, "targetSpeed");
-  }
-
-  if (values.playerSpeed !== defaults.playerSpeed) {
-    overrides.playerSpeed = clampGameplaySettingValue(values.playerSpeed, "playerSpeed");
-  }
-
-  if (values.playerBoostSpeed !== defaults.playerBoostSpeed) {
-    overrides.playerBoostSpeed = clampGameplaySettingValue(values.playerBoostSpeed, "playerBoostSpeed");
-  }
-
-  if (values.maxTargets !== defaults.maxTargets) {
-    overrides.maxTargets = clampGameplaySettingValue(values.maxTargets, "maxTargets");
-  }
-
-  if (values.targetGrowthScoreStep !== defaults.targetGrowthScoreStep) {
-    overrides.targetGrowthScoreStep = clampGameplaySettingValue(values.targetGrowthScoreStep, "targetGrowthScoreStep");
-  }
-
-  if (values.lifeSpawnChancePercent !== defaults.lifeSpawnChancePercent) {
-    overrides.lifeSpawnChancePercent = clampGameplaySettingValue(values.lifeSpawnChancePercent, "lifeSpawnChancePercent");
-  }
-
-  if (values.coinSpawnChancePercent !== defaults.coinSpawnChancePercent) {
-    overrides.coinSpawnChancePercent = clampGameplaySettingValue(values.coinSpawnChancePercent, "coinSpawnChancePercent");
-  }
-
-  if (values.lifePickupLifetimeSeconds !== defaults.lifePickupLifetimeSeconds) {
-    overrides.lifePickupLifetimeSeconds = clampGameplaySettingValue(values.lifePickupLifetimeSeconds, "lifePickupLifetimeSeconds");
-  }
-
-  if (values.coinPickupLifetimeSeconds !== defaults.coinPickupLifetimeSeconds) {
-    overrides.coinPickupLifetimeSeconds = clampGameplaySettingValue(values.coinPickupLifetimeSeconds, "coinPickupLifetimeSeconds");
-  }
-
-  if (values.startLives !== defaults.startLives) {
-    overrides.startLives = clampGameplaySettingValue(values.startLives, "startLives");
-  }
-
-  if (values.maxLives !== defaults.maxLives) {
-    overrides.maxLives = clampGameplaySettingValue(values.maxLives, "maxLives");
-  }
-
-  return overrides;
 }

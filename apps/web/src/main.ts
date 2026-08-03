@@ -22,6 +22,7 @@ import { EVENT_SOUNDS } from "./platform/event-sounds.config.ts";
 import { initializeLocale } from "./localization/localization.ts";
 import { createFullscreenController } from "./platform/fullscreen.ts";
 import { createAuthCard } from "./auth/auth-card.ts";
+import { createAdminShell } from "./admin/admin-shell.ts";
 
 // Native shells can launch the same web build with `?fullscreen=auto`.
 // Regular browser visits keep fullscreen user-controlled.
@@ -50,7 +51,8 @@ initializeLocale();
 const settingsPage = createSettingsPage();
 const fullscreen = createFullscreenController(document, document.documentElement);
 fullscreen.initialize({ autoEnter: AUTO_ENTER_FULLSCREEN });
-const adminPage = createAdminPage();
+const adminAnalyticsPage = createAdminPage();
+const adminPage = createAdminShell(adminAnalyticsPage);
 const leaderboardPanel = createLeaderboardPanel();
 const gameCanvas = getGameCanvas();
 const gameContext = getGameCanvasContext(gameCanvas);

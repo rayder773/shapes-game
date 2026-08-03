@@ -12,7 +12,6 @@ import type {
   GameplayProfile,
   SettingsEntity,
 } from "./game-runtime.ts";
-import { notifySettingsStateListeners } from "../settings/settings-controller.ts";
 
 const SETTINGS_ENTITY_ID = 0;
 
@@ -106,7 +105,6 @@ export function syncSettingsStateWithProfile(
     settingsEntity.settingsState.draft = applyGameplayOverrides(defaults, settingsEntity.settingsState.saved[activeProfileKey]);
   }
 
-  notifySettingsStateListeners();
 }
 
 export function resolveGameplayProfile(
@@ -156,5 +154,16 @@ export function createSettingsEntityFromSavedSettings(
       draft,
       defaults,
     },
+  };
+}
+
+export function replaceSavedGameplaySettings(
+  settingsEntity: SettingsEntity | null,
+  settings: SavedGameplaySettings,
+): void {
+  if (!settingsEntity) return;
+  settingsEntity.settingsState.saved = {
+    compactTouch: settings.compactTouch,
+    desktop: settings.desktop,
   };
 }

@@ -85,6 +85,16 @@ const en = {
     scrollForMore: "Scroll down to load more.", allEventsLoaded: "All events are loaded.",
     unknownError: "Unknown error", readOnly: "Read only",
     error: { loadUsers: "Could not load users", loadEvents: "Could not load user events", deleteUser: "Could not delete user" },
+    adminLogin: "Administrator sign in", adminLoginHint: "Continue with an authorized Google account.",
+    accessDenied: "This Google account does not have administrator access.", authError: "Could not verify administrator access.",
+    logout: "Sign out", analytics: "Analytics", gameSettings: "Game settings", version: "Version",
+    compactTouch: "Compact touch", desktop: "Desktop", saveSettings: "Save settings",
+    restoreDefaults: "Restore defaults", confirmDefaults: "Write the built-in defaults as a new version?",
+    changeHistory: "Change history", noHistory: "No changes yet.", loadMore: "Load more",
+    restoreVersion: "Restore this version", confirmRestore: (version: number) => `Restore version ${version} as a new current version?`,
+    settingsSaved: "Settings saved.", settingsConflict: "The settings were changed elsewhere. Reload the latest version.",
+    settingsError: "Could not load or save game settings.",
+    operations: { baseline: "Initial values", update: "Updated", defaults: "Defaults restored", restore: "Version restored" },
   },
 };
 

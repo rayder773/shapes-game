@@ -11,6 +11,7 @@ export type AuthenticatedSession = {
   displayName: string;
   avatarUrl: string | null;
   bestScore: number;
+  email: string | null;
 };
 
 type GoogleClaims = {
@@ -20,6 +21,8 @@ type GoogleClaims = {
   aud: string;
   iss: string;
   exp: number;
+  email: string;
+  emailVerified: boolean;
 };
 
 const SESSION_IDLE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -44,6 +47,8 @@ export async function verifyGoogleCredential(
       typeof payload.aud !== "string" || payload.aud !== clientId ||
       typeof payload.iss !== "string" || !GOOGLE_ISSUERS.has(payload.iss) ||
       typeof payload.exp !== "number" || payload.exp <= Math.floor(Date.now() / 1000)
+      || typeof payload.email !== "string" || !payload.email.trim()
+      || payload.email_verified !== true
     ) return null;
 
     const key = (await getGoogleKeys()).find(
@@ -74,6 +79,8 @@ export async function verifyGoogleCredential(
       aud: payload.aud,
       iss: payload.iss,
       exp: payload.exp,
+      email: payload.email.trim().toLowerCase().slice(0, 320),
+      emailVerified: true,
     };
   } catch {
     return null;
@@ -98,9 +105,9 @@ export async function createOrMergeGoogleUser(
     userId = crypto.randomUUID();
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO users (id, display_name, avatar_url, best_score, created_at, last_login_at)
-         VALUES (?, ?, ?, 0, ?, ?)`,
-      ).bind(userId, claims.name, claims.picture, now, now),
+        `INSERT INTO users (id, display_name, avatar_url, email, best_score, created_at, last_login_at)
+         VALUES (?, ?, ?, ?, 0, ?, ?)`,
+      ).bind(userId, claims.name, claims.picture, claims.email, now, now),
       env.DB.prepare(
         `INSERT INTO auth_identities (user_id, provider, provider_id, created_at)
          VALUES (?, 'google', ?, ?)`,
@@ -114,10 +121,10 @@ export async function createOrMergeGoogleUser(
   const bestScore = Math.max(identity?.best_score ?? 0, visitor?.best_score ?? 0, localBestScore);
   await env.DB.batch([
     env.DB.prepare(
-      `UPDATE users SET display_name = ?, avatar_url = ?, best_score = ?,
+      `UPDATE users SET display_name = ?, avatar_url = ?, email = ?, best_score = ?,
        best_score_updated_at = CASE WHEN best_score < ? THEN ? ELSE best_score_updated_at END,
        last_login_at = ? WHERE id = ?`,
-    ).bind(claims.name, claims.picture, bestScore, bestScore, now, now, userId),
+    ).bind(claims.name, claims.picture, claims.email, bestScore, bestScore, now, now, userId),
     env.DB.prepare("UPDATE visitors SET user_id = ? WHERE id = ?")
       .bind(userId, visitorId),
   ]);
@@ -131,6 +138,7 @@ export async function createOrMergeGoogleUser(
       displayName: claims.name,
       avatarUrl: claims.picture,
       bestScore,
+      email: claims.email,
     },
   };
 }
@@ -145,12 +153,12 @@ export async function resolveSession(
   const tokenHash = await hashSecret(token, env.SESSION_TOKEN_PEPPER);
   const row = await env.DB.prepare(
     `SELECT sessions.id AS session_id, sessions.user_id, sessions.expires_at,
-      users.display_name, users.avatar_url, users.best_score
+      users.display_name, users.avatar_url, users.best_score, users.email
      FROM sessions JOIN users ON users.id = sessions.user_id
      WHERE sessions.token_hash = ? AND sessions.revoked_at IS NULL`,
   ).bind(tokenHash).first<{
     session_id: string; user_id: string; expires_at: string; display_name: string;
-    avatar_url: string | null; best_score: number;
+    avatar_url: string | null; best_score: number; email: string | null;
   }>();
   if (!row) return null;
   if (Date.parse(row.expires_at) <= Date.now()) {
@@ -169,6 +177,7 @@ export async function resolveSession(
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     bestScore: row.best_score,
+    email: row.email,
   };
 }
 

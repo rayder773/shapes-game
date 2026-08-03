@@ -1,4 +1,4 @@
-export type AppRoute = "game" | "settings" | "admin";
+export type AppRoute = "game" | "settings" | "admin" | "adminSettings";
 
 type RouteListener = (route: AppRoute) => void;
 
@@ -47,13 +47,14 @@ function stripBasePath(pathname: string): string {
 function routeFromPath(pathname: string): AppRoute {
   const appPath = trimTrailingSlash(stripBasePath(pathname));
   if (appPath === "/settings") return "settings";
+  if (appPath === "/admin/settings") return "adminSettings";
   if (appPath === "/admin") return "admin";
   return "game";
 }
 
 function pathForRoute(route: AppRoute): string {
   const basePath = getBasePath();
-  const routePath = route === "settings" ? "/settings" : route === "admin" ? "/admin" : "";
+  const routePath = route === "settings" ? "/settings" : route === "admin" ? "/admin" : route === "adminSettings" ? "/admin/settings" : "";
   return `${basePath}${routePath}` || "/";
 }
 

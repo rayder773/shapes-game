@@ -38,7 +38,7 @@ export function createAdminPage(): AdminPageController {
   injectAdminStyles();
 
   const root = document.createElement("div");
-  root.className = "admin-page";
+  root.className = "admin-analytics-page";
   root.hidden = true;
   let isVisible = false;
 
@@ -388,7 +388,11 @@ export function createAdminPage(): AdminPageController {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof AdminApiError) {
-    return getTranslations().admin.error[error.code];
+    const messages = getTranslations().admin.error;
+    if (error.code === "loadUsers" || error.code === "loadEvents" || error.code === "deleteUser") {
+      return messages[error.code];
+    }
+    return getTranslations().admin.authError;
   }
   return error instanceof Error ? error.message : getTranslations().admin.unknownError;
 }
@@ -615,6 +619,25 @@ function injectAdminStyles(): void {
       text-align: center;
     }
 
+    .admin-auth { width: min(440px, calc(100% - 32px)); margin: 12dvh auto; border: 1px solid #d8e0ea; border-radius: 12px; background: #fff; padding: 28px; box-shadow: 0 18px 40px rgb(27 45 70 / 12%); }
+    .admin-auth h1 { margin: 0 0 12px; }
+    .admin-auth [data-admin-google] { min-height: 44px; margin: 22px 0; }
+    .admin-nav { display: flex; gap: 10px; margin-bottom: 18px; }
+    .admin-nav .is-active, .admin-primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+    .admin-success { margin-bottom: 16px; border: 1px solid #86d6a6; border-radius: 8px; background: #effcf3; color: #166534; padding: 12px 14px; }
+    .admin-settings-panel, .admin-history-panel { margin-bottom: 18px; }
+    .admin-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .admin-profile { min-width: 0; border: 1px solid #d8e0ea; border-radius: 8px; padding: 14px; }
+    .admin-profile legend { font-weight: 800; padding: 0 6px; }
+    .admin-setting { display: grid; grid-template-columns: minmax(140px, 1fr) 44px; align-items: center; gap: 6px 10px; margin: 12px 0; }
+    .admin-setting output { text-align: right; font-weight: 800; }
+    .admin-setting input { grid-column: 1 / -1; width: 100%; }
+    .admin-settings-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+    .admin-history-list { display: grid; gap: 8px; margin-bottom: 12px; }
+    .admin-history-item { border: 1px solid #d8e0ea; border-radius: 8px; padding: 10px 12px; }
+    .admin-history-item summary { cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+    .admin-history-item pre { max-height: 320px; overflow: auto; background: #f6f8fb; padding: 10px; }
+
     @media (max-width: 720px) {
       .admin-shell {
         width: min(100% - 20px, 1440px);
@@ -633,6 +656,8 @@ function injectAdminStyles(): void {
       .admin-panel {
         padding: 12px;
       }
+      .admin-settings-grid { grid-template-columns: 1fr; }
+      .admin-settings-actions, .admin-nav, .admin-history-item summary { align-items: stretch; flex-direction: column; }
     }
   `;
   document.head.append(style);

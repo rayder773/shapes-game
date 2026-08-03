@@ -88,6 +88,16 @@ const ru = {
     scrollForMore: "Прокрутите ниже, чтобы загрузить еще.", allEventsLoaded: "Все события загружены.",
     unknownError: "Неизвестная ошибка", readOnly: "Только просмотр",
     error: { loadUsers: "Не удалось загрузить пользователей", loadEvents: "Не удалось загрузить события пользователя", deleteUser: "Не удалось удалить пользователя" },
+    adminLogin: "Вход для администратора", adminLoginHint: "Продолжите с разрешённым Google-аккаунтом.",
+    accessDenied: "У этого Google-аккаунта нет доступа к админке.", authError: "Не удалось проверить доступ администратора.",
+    logout: "Выйти", analytics: "Аналитика", gameSettings: "Настройки игры", version: "Версия",
+    compactTouch: "Мобильный профиль", desktop: "Десктопный профиль", saveSettings: "Сохранить настройки",
+    restoreDefaults: "Вернуть дефолтные", confirmDefaults: "Записать встроенные дефолты как новую версию?",
+    changeHistory: "История изменений", noHistory: "Изменений пока нет.", loadMore: "Загрузить ещё",
+    restoreVersion: "Восстановить эту версию", confirmRestore: (version: number) => `Восстановить версию ${version} как новую текущую?`,
+    settingsSaved: "Настройки сохранены.", settingsConflict: "Настройки уже изменены в другом окне. Загрузите свежую версию.",
+    settingsError: "Не удалось загрузить или сохранить настройки игры.",
+    operations: { baseline: "Начальные значения", update: "Изменено", defaults: "Возвращены дефолты", restore: "Восстановлена версия" },
   },
 } satisfies TranslationShape<EnglishTranslations>;
 

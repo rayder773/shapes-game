@@ -1,12 +1,12 @@
-import type { AdminPageController } from "../admin/admin-page.ts";
 import type { AppReadModel } from "./app-read-model.ts";
+import type { AppRoute } from "../platform/router.ts";
 import type { DomGameUi } from "../game/dom-game-ui.ts";
 import type { SettingsPageController } from "../settings/settings-page.ts";
 
 type DomAppUiDependencies = {
   gameUi: DomGameUi;
   settingsPage: SettingsPageController;
-  adminPage: AdminPageController;
+  adminPage: { setRoute: (route: AppRoute) => void };
   body: HTMLElement;
 };
 
@@ -25,7 +25,7 @@ export function createDomAppUi({
       body.dataset.route = model.route;
       gameUi.render(model);
       settingsPage.render(model);
-      adminPage.setVisible(model.shell.adminPageVisible);
+      adminPage.setRoute(model.route);
     },
   };
 }
