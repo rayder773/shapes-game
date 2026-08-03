@@ -1,165 +1,29 @@
-import { beforeEach, describe, expect, test } from "vitest";
-import type { AppReadModel } from "../src/app/app-read-model.ts";
-import type { GameReadModel } from "../src/game/game-read-model.ts";
+import { describe, expect, test } from "vitest";
 import { createSettingsPage, type SettingsPageEvent } from "../src/settings/settings-page.ts";
+import type { AppReadModel } from "../src/app/app-read-model.ts";
 
-function createGameplayProfile(): GameReadModel["gameplayProfile"] {
+function model(visible = true): AppReadModel {
   return {
-    compactTouch: false,
-    startTargetCount: 3,
-    minTargetsAfterScore: 2,
-    targetSpeed: 2,
-    playerSpeed: 4,
-    playerBoostSpeed: 7,
-    maxTargets: 8,
-    targetGrowthScoreStep: 5,
-    lifeSpawnChance: 0.1,
-    coinSpawnChance: 0.2,
-    lifePickupLifetimeSeconds: 3,
-    coinPickupLifetimeSeconds: 4,
-    startLives: 3,
-    maxLives: 5,
-    spawnPadding: 1,
-    safeSpawnPadding: 2,
+    route: visible ? "settings" : "game",
+    shell: { gamePageVisible: !visible, settingsPageVisible: visible, adminPageVisible: false },
+    game: {} as AppReadModel["game"],
   };
 }
 
-function createAppModel(overrides: {
-  settingsPageVisible?: boolean;
-  activeProfileKey?: NonNullable<GameReadModel["settings"]>["activeProfileKey"];
-} = {}): AppReadModel {
-  return {
-    route: overrides.settingsPageVisible === false ? "game" : "settings",
-    shell: {
-      gamePageVisible: overrides.settingsPageVisible === false,
-      settingsPageVisible: overrides.settingsPageVisible ?? true,
-      adminPageVisible: false,
-    },
-    game: {
-      state: "paused",
-      hud: {
-        score: 0,
-        coins: 0,
-        lives: 3,
-        maxLives: 5,
-        bestScore: null,
-      },
-      overlay: {
-        mode: null,
-        view: null,
-      },
-      scene: {
-        entities: [],
-      },
-      roundResult: {
-        baseScore: 0,
-        coinBonus: 0,
-        finalScore: 0,
-        bestScore: null,
-        wasNewBest: false,
-      },
-      gameplayProfile: createGameplayProfile(),
-      input: {
-        up: false,
-        down: false,
-        left: false,
-        right: false,
-      },
-      settings: {
-        activeProfileKey: overrides.activeProfileKey ?? "desktop",
-        saved: {
-          compactTouch: {},
-          desktop: {},
-        },
-        draft: {
-          targetSpeed: 8,
-          playerSpeed: 4,
-          playerBoostSpeed: 7,
-          maxTargets: 10,
-          targetGrowthScoreStep: 5,
-          lifeSpawnChancePercent: 15,
-          coinSpawnChancePercent: 25,
-          lifePickupLifetimeSeconds: 3,
-          coinPickupLifetimeSeconds: 4,
-          startLives: 3,
-          maxLives: 5,
-        },
-        defaults: {
-          targetSpeed: 2,
-          playerSpeed: 4,
-          playerBoostSpeed: 7,
-          maxTargets: 8,
-          targetGrowthScoreStep: 5,
-          lifeSpawnChancePercent: 10,
-          coinSpawnChancePercent: 40,
-          lifePickupLifetimeSeconds: 3,
-          coinPickupLifetimeSeconds: 3,
-          startLives: 3,
-          maxLives: 5,
-        },
-      },
-    },
-  };
-}
-
-function getSlider(label: string): HTMLInputElement {
-  const labels = [...document.querySelectorAll(".settings-slider-label")];
-  const row = labels.find((element) => element.textContent?.includes(label))?.parentElement;
-  const input = row?.querySelector("input");
-  expect(input).toBeInstanceOf(HTMLInputElement);
-  return input as HTMLInputElement;
-}
-
-function click(element: Element): void {
-  element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-}
-
-describe("settings page adapter", () => {
-  beforeEach(() => {
-    document.body.innerHTML = "";
-  });
-
-  test("renders settings state and visibility from the app read model", () => {
-    const page = createSettingsPage();
-    document.body.append(page.element);
-
-    page.render(createAppModel());
-
+describe("language settings page", () => {
+  test("renders only language controls and follows visibility", () => {
+    const page = createSettingsPage(); document.body.append(page.element); page.render(model());
     expect(page.element.hidden).toBe(false);
-    expect(document.querySelector(".settings-subtitle")?.textContent).toContain("десктопный");
-    expect(getSlider("Скорость фигур").value).toBe("8");
-    expect(getSlider("Шанс появления жизни").value).toBe("15");
-    expect(getSlider("Шанс появления монетки").value).toBe("25");
-    expect(getSlider("Время жизни жизни").value).toBe("3");
-    expect(getSlider("Время жизни монетки").value).toBe("4");
-
-    page.render(createAppModel({ settingsPageVisible: false }));
-
-    expect(page.element.hidden).toBe(true);
+    expect(page.element.querySelector(".settings-language-select")).toBeInstanceOf(HTMLSelectElement);
+    expect(page.element.querySelectorAll('input[type="range"]')).toHaveLength(0);
+    page.render(model(false)); expect(page.element.hidden).toBe(true);
   });
 
-  test("emits semantic settings events", () => {
-    const page = createSettingsPage();
-    const events: SettingsPageEvent[] = [];
-    page.subscribe((event) => events.push(event));
-    document.body.append(page.element);
-    page.render(createAppModel());
-
-    const targetSpeed = getSlider("Скорость фигур");
-    targetSpeed.value = "11";
-    targetSpeed.dispatchEvent(new Event("input", { bubbles: true }));
-    const coinChance = getSlider("Шанс появления монетки");
-    coinChance.value = "75";
-    coinChance.dispatchEvent(new Event("input", { bubbles: true }));
-
-    click([...document.querySelectorAll(".settings-button")].find((element) => element.textContent === "Дефолтные значения") as HTMLButtonElement);
-    click([...document.querySelectorAll(".settings-button")].find((element) => element.textContent === "Сохранить и начать игру") as HTMLButtonElement);
-
-    expect(events).toEqual([
-      { type: "settings-change", field: "targetSpeed", value: 11 },
-      { type: "settings-change", field: "coinSpawnChancePercent", value: 75 },
-      { type: "settings-reset" },
-      { type: "settings-save" },
-    ]);
+  test("emits language and close events", () => {
+    const events: SettingsPageEvent[] = []; const page = createSettingsPage(); page.subscribe((event) => events.push(event));
+    document.body.append(page.element); page.render(model());
+    const select = page.element.querySelector<HTMLSelectElement>("select")!; select.value = "en"; select.dispatchEvent(new Event("change"));
+    page.element.querySelector<HTMLButtonElement>("[data-close]")!.click();
+    expect(events).toEqual([{ type: "language-change", locale: "en" }, { type: "close" }]);
   });
 });

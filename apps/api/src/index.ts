@@ -16,6 +16,13 @@ import {
   revokeSession,
   verifyGoogleCredential,
 } from "./auth";
+import {
+  DEFAULT_GAME_SETTINGS,
+  parseGameSettingsConfig,
+  readGameSettings,
+  readHistoryConfig,
+  writeGameSettings,
+} from "./game-settings";
 
 type Bindings = {
   DB: D1Database;
@@ -97,7 +104,7 @@ app.use(
   cors({
     origin: "*",
     allowHeaders: ["content-type", "authorization"],
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   }),
 );
 
@@ -162,7 +169,104 @@ app.delete("/account", async (context) => {
   return context.json({ ok: true });
 });
 
+app.get("/game-settings", async (context) => {
+  const settings = await readGameSettings(context.env.DB);
+  return context.json({
+    ok: true,
+    version: settings.version,
+    config: settings.config,
+    updated_at: settings.updatedAt,
+  });
+});
+
+app.get("/admin/api/me", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
+  return context.json({
+    ok: true,
+    admin: { id: auth.session.userId, email: auth.session.email, display_name: auth.session.displayName },
+  });
+});
+
+app.get("/admin/api/game-settings", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
+  const settings = await readGameSettings(context.env.DB);
+  return context.json({
+    ok: true,
+    current: serializeGameSettings(settings),
+    defaults: DEFAULT_GAME_SETTINGS,
+  });
+});
+
+app.put("/admin/api/game-settings", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
+  const body = await parseJsonBody(context);
+  if (!body.ok || !isRecord(body.value)) return context.json({ ok: false, error: "invalid_json" }, 400);
+  const expectedVersion = readPositiveInteger(body.value.expected_version);
+  const config = parseGameSettingsConfig(body.value.config);
+  if (expectedVersion === null || !config) return context.json({ ok: false, error: "invalid_settings" }, 400);
+  const saved = await writeGameSettings(context.env.DB, auth.session, config, expectedVersion, "update");
+  if (!saved) return context.json({ ok: false, error: "version_conflict" }, 409);
+  return context.json({ ok: true, current: serializeGameSettings(saved) });
+});
+
+app.post("/admin/api/game-settings/defaults", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
+  const body = await parseJsonBody(context);
+  const expectedVersion = body.ok && isRecord(body.value) ? readPositiveInteger(body.value.expected_version) : null;
+  if (expectedVersion === null) return context.json({ ok: false, error: "invalid_version" }, 400);
+  const saved = await writeGameSettings(
+    context.env.DB, auth.session, DEFAULT_GAME_SETTINGS, expectedVersion, "defaults",
+  );
+  if (!saved) return context.json({ ok: false, error: "version_conflict" }, 409);
+  return context.json({ ok: true, current: serializeGameSettings(saved) });
+});
+
+app.get("/admin/api/game-settings/history", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
+  const beforeVersion = readPositiveInteger(context.req.query("before_version"));
+  const query = beforeVersion === null
+    ? `SELECT version, config, operation, created_at, actor_email, restored_from_version
+       FROM game_settings_history ORDER BY version DESC LIMIT 51`
+    : `SELECT version, config, operation, created_at, actor_email, restored_from_version
+       FROM game_settings_history WHERE version < ? ORDER BY version DESC LIMIT 51`;
+  const rows = beforeVersion === null
+    ? await context.env.DB.prepare(query).all<GameSettingsHistoryRow>()
+    : await context.env.DB.prepare(query).bind(beforeVersion).all<GameSettingsHistoryRow>();
+  const results = rows.results ?? [];
+  const page = results.slice(0, 50);
+  return context.json({
+    ok: true,
+    history: page.map((row) => ({ ...row, config: JSON.parse(row.config) })),
+    next_before_version: results.length > 50 ? page.at(-1)?.version ?? null : null,
+    has_more: results.length > 50,
+  });
+});
+
+app.post("/admin/api/game-settings/restore", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
+  const body = await parseJsonBody(context);
+  if (!body.ok || !isRecord(body.value)) return context.json({ ok: false, error: "invalid_json" }, 400);
+  const expectedVersion = readPositiveInteger(body.value.expected_version);
+  const sourceVersion = readPositiveInteger(body.value.source_version);
+  if (expectedVersion === null || sourceVersion === null) return context.json({ ok: false, error: "invalid_version" }, 400);
+  const config = await readHistoryConfig(context.env.DB, sourceVersion);
+  if (!config) return context.json({ ok: false, error: "history_not_found" }, 404);
+  const saved = await writeGameSettings(
+    context.env.DB, auth.session, config, expectedVersion, "restore", sourceVersion,
+  );
+  if (!saved) return context.json({ ok: false, error: "version_conflict" }, 409);
+  return context.json({ ok: true, current: serializeGameSettings(saved) });
+});
+
 app.get("/admin/api/visitors", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
   const visitors = await context.env.DB.prepare(
     `SELECT visitors.id, visitors.ip, visitors.user_agent, visitors.created_at,
       MAX(events.client_created_at) AS last_event_at,
@@ -196,6 +300,8 @@ app.get("/admin/api/visitors", async (context) => {
 });
 
 app.get("/admin/api/visitors/:visitorId/events", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
   const visitorId = context.req.param("visitorId");
   const limit = getEventsPageLimit(context.req.query("limit"));
   const beforeId = getEventsBeforeId(context.req.query("before_id"));
@@ -248,6 +354,8 @@ app.get("/admin/api/visitors/:visitorId/events", async (context) => {
 });
 
 app.delete("/admin/api/visitors/:visitorId", async (context) => {
+  const auth = await getAdminAuth(context);
+  if (!auth.ok) return context.json({ ok: false, error: auth.error }, auth.status);
   const visitorId = context.req.param("visitorId");
   const deleted = await deleteVisitorWithEvents(context, visitorId);
 
@@ -760,6 +868,43 @@ function parseEventPayload(payload: string): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type GameSettingsHistoryRow = {
+  version: number;
+  config: string;
+  operation: "baseline" | "update" | "defaults" | "restore";
+  created_at: string;
+  actor_email: string;
+  restored_from_version: number | null;
+};
+
+const ADMIN_EMAIL_ALLOWLIST = new Set(["gerasymenkoden@gmail.com"]);
+
+async function getAdminAuth(context: AppContext): Promise<
+  | { ok: true; session: NonNullable<Awaited<ReturnType<typeof resolveSession>>> }
+  | { ok: false; status: 401 | 403; error: "invalid_session" | "admin_access_denied" }
+> {
+  const session = await resolveSession(context.env, context.req.header("authorization"));
+  if (!session) return { ok: false, status: 401, error: "invalid_session" };
+  if (!session.email || !ADMIN_EMAIL_ALLOWLIST.has(session.email.toLowerCase())) {
+    return { ok: false, status: 403, error: "admin_access_denied" };
+  }
+  return { ok: true, session };
+}
+
+function readPositiveInteger(value: unknown): number | null {
+  const candidate = typeof value === "string" && value.trim() ? Number(value) : value;
+  return typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 1 ? candidate : null;
+}
+
+function serializeGameSettings(settings: Awaited<ReturnType<typeof readGameSettings>>) {
+  return {
+    version: settings.version,
+    config: settings.config,
+    updated_at: settings.updatedAt,
+    updated_by_email: settings.updatedByEmail,
+  };
 }
 
 function serializeUser(session: {

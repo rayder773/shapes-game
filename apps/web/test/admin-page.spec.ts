@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { advanceUntil, bootApp, click } from "./helpers";
 
 const visitors = [
@@ -51,6 +51,12 @@ const secondVisitorEvents = [
 ];
 
 describe("admin page", () => {
+  beforeEach(() => {
+    localStorage.setItem("shapes-game.identity.session", JSON.stringify({
+      token: "admin-token", sessionId: "admin-session",
+      user: { id: "admin", displayName: "Admin", avatarUrl: null, bestScore: 0 },
+    }));
+  });
   test("loads visitors, selects the first visitor and renders its events", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === "/admin/api/visitors") {
@@ -74,8 +80,8 @@ describe("admin page", () => {
     await bootApp("/shapes-game/admin");
     await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("game_end") === true);
 
-    expect(fetchMock).toHaveBeenCalledWith("/admin/api/visitors");
-    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events?limit=100`);
+    expect(fetchMock).toHaveBeenCalledWith("/admin/api/visitors", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events?limit=100`, expect.any(Object));
     expect(document.querySelector(".admin-page")?.textContent).toContain("Vitest Browser");
     expect(document.querySelector(".admin-page")?.textContent).toContain("score");
   });
@@ -163,7 +169,7 @@ describe("admin page", () => {
 
     await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("settings_open") === true);
 
-    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}`, { method: "DELETE" });
+    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}`, expect.objectContaining({ method: "DELETE" }));
     expect(document.querySelector(".admin-page")?.textContent).not.toContain("game_end");
     expect(document.querySelector(".admin-page")?.textContent).toContain("Second Browser");
   });
@@ -212,7 +218,7 @@ describe("admin page", () => {
 
     await advanceUntil(() => document.querySelector(".admin-page")?.textContent?.includes("game_start") === true);
 
-    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events?limit=100&before_id=2`);
+    expect(fetchMock).toHaveBeenCalledWith(`/admin/api/visitors/${visitors[0].id}/events?limit=100&before_id=2`, expect.any(Object));
   });
 });
 

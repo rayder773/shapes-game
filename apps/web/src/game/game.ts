@@ -1,5 +1,6 @@
 import {
   loadSavedGameplaySettings,
+  refreshGameplaySettings,
 } from "./gameplay-settings.ts";
 import {
   getShapeRadius,
@@ -52,6 +53,7 @@ import {
   createSettingsEntityFromSavedSettings,
   getGameplayProfileKey,
   resolveGameplayProfile,
+  replaceSavedGameplaySettings,
   syncSettingsStateWithProfile,
 } from "./gameplay-profile.ts";
 import {
@@ -72,10 +74,6 @@ import {
   getDesiredTargetCount,
   type SpawnRandom,
 } from "./game-spawn.ts";
-import {
-  configureSettingsController,
-  notifySettingsStateListeners,
-} from "../settings/settings-controller.ts";
 import {
   createQueues,
   createRuntime,
@@ -148,7 +146,6 @@ let overlayMode: OverlayMode = null;
 let hasStartedFrameLoop = false;
 let hasInitializedGameSession = false;
 let hasInstalledDomBindings = false;
-let shouldRestartGameOnNextGameRoute = false;
 let isGameRouteActive = false;
 let lastPauseWasAutoPaused = false;
 
@@ -243,7 +240,6 @@ function updateGameplayProfile(resetDraft = false): void {
 
 function initializeSettingsState(): void {
   game.ecsWorld.add(createSettingsEntityFromSavedSettings(game.canvasMetrics, loadSavedGameplaySettings()));
-  notifySettingsStateListeners();
 }
 
 export function setOpenSettingsListener(listener: OpenSettingsListener): void {
@@ -1101,7 +1097,13 @@ function togglePauseGame(): void {
     }
   }
 
-  function restartGame(): void {
+  let restartInProgress = false;
+
+  async function restartGame(): Promise<void> {
+    if (restartInProgress) return;
+    restartInProgress = true;
+    const refreshed = import.meta.env.MODE === "test" ? null : await refreshGameplaySettings();
+    if (refreshed) replaceSavedGameplaySettings(getSettingsEntity(), refreshed);
     const shouldTrackRestart = game.state !== "boot";
 
     if (shouldTrackRestart) {
@@ -1114,6 +1116,7 @@ function togglePauseGame(): void {
       target_count: [...game.queries.targets].length,
       start_lives: game.lives,
     });
+    restartInProgress = false;
   }
 
   const FIXED_TICK_SYSTEMS: Array<() => void> = [
@@ -1155,8 +1158,8 @@ function togglePauseGame(): void {
     requestAnimationFrame(frame);
   }
 
-  function startGameSession(): void {
-    restartGame();
+  async function startGameSession(): Promise<void> {
+    await restartGame();
     hasInitializedGameSession = true;
 
     continueEntryOverlayFlow();
@@ -1181,9 +1184,8 @@ function togglePauseGame(): void {
     pwa.setGameRouteActive(true);
     renderApp();
 
-    if (!hasInitializedGameSession || shouldRestartGameOnNextGameRoute) {
-      shouldRestartGameOnNextGameRoute = false;
-      startGameSession();
+    if (!hasInitializedGameSession) {
+      void startGameSession();
       return;
     }
 
@@ -1305,7 +1307,7 @@ function togglePauseGame(): void {
       }
 
       if (event.action === "restart") {
-        restartGame();
+        void restartGame();
       }
     }
 
@@ -1339,13 +1341,6 @@ function togglePauseGame(): void {
     openLeaderboardListener = dependencies.openLeaderboard ?? null;
     gameEvents = dependencies.events ?? null;
     toggleFullscreenListener = dependencies.toggleFullscreen ?? null;
-    configureSettingsController({
-      getSettingsEntity,
-      onPersistActiveProfileSettings() {
-        updateGameplayProfile(true);
-        shouldRestartGameOnNextGameRoute = true;
-      },
-    });
     installDomBindings();
     resizeCanvas();
     initializeSettingsState();

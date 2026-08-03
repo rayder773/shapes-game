@@ -65,6 +65,7 @@ export default defineConfig({
     host: "127.0.0.1",
     proxy: {
       "/admin/api": "http://127.0.0.1:8787",
+      "/game-settings": "http://127.0.0.1:8787",
     },
   },
 });

@@ -13,12 +13,6 @@ import {
   subscribeToRouteChanges,
   type AppRoute,
 } from "../platform/router.ts";
-import {
-  persistActiveProfileSettings,
-  resetSettingsDraftToDefaults,
-  subscribeToSettingsState,
-  updateSettingsDraft,
-} from "../settings/settings-controller.ts";
 import type { SettingsPageController } from "../settings/settings-page.ts";
 import { setLocale, subscribeToLocaleChange } from "../localization/localization.ts";
 
@@ -30,6 +24,7 @@ type AppControllerDependencies = {
 function handleRouteEntry(route: AppRoute): void {
   switch (route) {
     case "admin":
+    case "adminSettings":
       enterNonGamePage();
       return;
     case "settings":
@@ -55,28 +50,11 @@ export function initializeAppController({
       return;
     }
 
-    if (event.type === "settings-change") {
-      updateSettingsDraft(event.field, event.value);
-      renderAppUi();
-      return;
-    }
-
-    if (event.type === "settings-reset") {
-      resetSettingsDraftToDefaults();
-      renderAppUi();
-      return;
-    }
-
-    persistActiveProfileSettings();
     navigateToRoute("game");
   });
 
   setOpenSettingsListener(() => {
     navigateToRoute("settings");
-  });
-
-  subscribeToSettingsState(() => {
-    renderAppUi();
   });
 
   subscribeToLocaleChange(() => {

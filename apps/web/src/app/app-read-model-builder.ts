@@ -9,7 +9,7 @@ export function buildAppReadModel(route: AppRoute, game: GameReadModel): AppRead
     shell: {
       gamePageVisible: route === "game",
       settingsPageVisible: route === "settings",
-      adminPageVisible: route === "admin",
+      adminPageVisible: route === "admin" || route === "adminSettings",
     },
   };
 }

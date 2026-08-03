@@ -3,7 +3,7 @@ import { identityService } from "./identity-service.ts";
 import { getTranslations, subscribeToLocaleChange } from "../localization/localization.ts";
 import { readLocalBestScore, syncBestScore } from "../leaderboard/best-score-sync.ts";
 
-type GoogleAccounts = {
+export type GoogleAccounts = {
   id: {
     initialize(options: { client_id: string; callback: (response: { credential?: string }) => void }): void;
     renderButton(parent: HTMLElement, options: Record<string, unknown>): void;
@@ -118,11 +118,13 @@ export function createAuthCard(options: AuthCardOptions = {}): {
 
   identityService.subscribe(render);
   subscribeToLocaleChange(render);
-  void (options.restore ?? restoreSession)().finally(render);
+  if (!/\/admin(?:\/settings)?\/?$/.test(window.location.pathname)) {
+    void (options.restore ?? restoreSession)().finally(render);
+  }
   return { element: root, setVisible(nextVisible) { visible = nextVisible; render(); } };
 }
 
-function loadGoogleSdk(): Promise<GoogleAccounts> {
+export function loadGoogleSdk(): Promise<GoogleAccounts> {
   if (window.google?.accounts) return Promise.resolve(window.google.accounts);
   if (googleSdkPromise) return googleSdkPromise;
   googleSdkPromise = new Promise((resolve, reject) => {

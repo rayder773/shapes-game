@@ -189,7 +189,7 @@ describe("gameplay core", () => {
 
   test("safe target collision increases score and spawned pickups are collected", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
-    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+    window.localStorage.setItem("shapes-game.remoteGameplaySettings", JSON.stringify({
       compactTouch: {},
       desktop: {
         targetSpeed: 0,
@@ -245,7 +245,7 @@ describe("gameplay core", () => {
 
   test("safe target collision consumes without rebounding the player", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
-    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+    window.localStorage.setItem("shapes-game.remoteGameplaySettings", JSON.stringify({
       compactTouch: {},
       desktop: {
         targetSpeed: 0,
@@ -303,7 +303,7 @@ describe("gameplay core", () => {
 
   test("spawned pickups expire without changing lives or coins", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
-    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+    window.localStorage.setItem("shapes-game.remoteGameplaySettings", JSON.stringify({
       compactTouch: {},
       desktop: {
         targetSpeed: 0,
@@ -354,7 +354,7 @@ describe("gameplay core", () => {
 
   test("unsafe target collision decreases lives", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
-    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+    window.localStorage.setItem("shapes-game.remoteGameplaySettings", JSON.stringify({
       compactTouch: {},
       desktop: {
         targetSpeed: 0,
@@ -390,7 +390,7 @@ describe("gameplay core", () => {
 
   test("unsafe target collision removes the target without rebounding the player", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
-    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+    window.localStorage.setItem("shapes-game.remoteGameplaySettings", JSON.stringify({
       compactTouch: {},
       desktop: {
         targetSpeed: 0,
@@ -447,7 +447,7 @@ describe("gameplay core", () => {
 
   test("target growth respects fallback and maxTargets", async () => {
     window.localStorage.setItem("shapes-game.rulesAccepted", "true");
-    window.localStorage.setItem("shapes-game.gameplaySettings", JSON.stringify({
+    window.localStorage.setItem("shapes-game.remoteGameplaySettings", JSON.stringify({
       compactTouch: {},
       desktop: {
         targetGrowthScoreStep: 0,
